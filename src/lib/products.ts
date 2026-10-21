@@ -222,9 +222,37 @@ export const products: Product[] = [
   },
 ].map(p);
 
-export const getProduct = (slug: string) => products.find((x) => x.slug === slug);
+export const PRODUCTS_STORAGE_KEY = "mk_custom_products_v1";
+
+export function getAllProducts(): Product[] {
+  if (typeof window === "undefined") return products;
+  try {
+    const raw = localStorage.getItem(PRODUCTS_STORAGE_KEY);
+    if (!raw) return products;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : products;
+  } catch {
+    return products;
+  }
+}
+
+export function saveAllProducts(list: Product[]) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(PRODUCTS_STORAGE_KEY, JSON.stringify(list));
+  window.dispatchEvent(new Event("mk_products_updated"));
+}
+
+export function resetDefaultProducts(): Product[] {
+  if (typeof window !== "undefined") {
+    localStorage.removeItem(PRODUCTS_STORAGE_KEY);
+    window.dispatchEvent(new Event("mk_products_updated"));
+  }
+  return products;
+}
+
+export const getProduct = (slug: string) => getAllProducts().find((x) => x.slug === slug);
 export const findVariant = (sku: string) => {
-  for (const pr of products) {
+  for (const pr of getAllProducts()) {
     const va = pr.variants.find((x) => x.sku === sku);
     if (va) return { product: pr, variant: va };
   }
@@ -232,4 +260,5 @@ export const findVariant = (sku: string) => {
 };
 export const inr = (n: number) => "₹" + n.toLocaleString("en-IN");
 export const discountPct = (va: Variant) => Math.round(((va.mrp - va.price) / va.mrp) * 100);
+
 

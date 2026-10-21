@@ -40,13 +40,24 @@ import {
   User,
   Users,
   X,
+  MessageCircle,
+  Send,
 } from "lucide-react";
 import { toast } from "sonner";
 import logo from "@/assets/logo-light.png";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { categories, inr, products, type Product } from "@/lib/products";
 import {
+  categories,
+  getAllProducts,
+  inr,
+  products,
+  resetDefaultProducts,
+  saveAllProducts,
+  type Product,
+} from "@/lib/products";
+import {
+  clearAllStoredOrders,
   exportOrdersToCsv,
   getStoredAdminAuth,
   getStoredInventory,
@@ -59,6 +70,12 @@ import {
   type AdminOrderStatus,
   type ProductInventoryOverride,
 } from "@/lib/admin";
+import {
+  sendAdminNewOrderWhatsApp,
+  sendCustomerInvoiceWhatsApp,
+  sendCustomerStatusWhatsApp,
+  type WhatsAppOrderDetails,
+} from "@/lib/whatsapp";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/admin")({
@@ -71,7 +88,7 @@ export const Route = createFileRoute("/admin")({
   component: AdminPage,
 });
 
-type TabType = "dashboard" | "orders" | "products" | "inquiries" | "charts" | "tables";
+type TabType = "dashboard" | "orders" | "products" | "charts" | "tables";
 
 const STATUS_CONFIG: Record<AdminOrderStatus, { label: string; badgeClass: string; bg: string }> = {
   COD_PENDING: { label: "COD Pending", badgeClass: "bg-amber-100 text-amber-800 border border-amber-300", bg: "#ffc107" },
@@ -94,30 +111,47 @@ function AdminPage() {
   const [orders, setOrders] = useState<AdminOrder[]>([]);
   const [inventoryOverrides, setInventoryOverrides] = useState<Record<string, ProductInventoryOverride>>({});
   const [selectedOrder, setSelectedOrder] = useState<AdminOrder | null>(null);
+
+  // Dynamic product CRUD state (Add, Edit, Remove)
+  const [productList, setProductList] = useState<Product[]>(() => getAllProducts());
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [editPriceForm, setEditPriceForm] = useState({ price: 0, mrp: 0, stock: 50 });
+  const [productToDelete, setProductToDelete] = useState<Product | null>(null);
+
+  const [productForm, setProductForm] = useState({
+    name: "",
+    slug: "",
+    category: "syrups",
+    price: 299,
+    mrp: 399,
+    stock: 50,
+    short: "",
+    image: "",
+    benefits: "",
+  });
+
   const [searchQuery, setSearchQuery] = useState("");
   const [entriesPerPage, setEntriesPerPage] = useState<number>(10);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [orderStatusFilter, setOrderStatusFilter] = useState<string>("ALL");
   const [productCategoryFilter, setProductCategoryFilter] = useState<string>("ALL");
-  const [inquiries, setInquiries] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Load state on mount
+  // Load state on mount and listen to product updates
   useEffect(() => {
     setIsAuthenticated(getStoredAdminAuth());
     setOrders(getStoredOrders());
     setInventoryOverrides(getStoredInventory());
+    setProductList(getAllProducts());
 
-    try {
-      const storedInq = JSON.parse(localStorage.getItem("mk_contact_inquiries_v1") || "[]");
-      setInquiries(storedInq);
-    } catch {
-      setInquiries([]);
-    }
+    const handleProductsUpdated = () => {
+      setProductList(getAllProducts());
+    };
+    window.addEventListener("mk_products_updated", handleProductsUpdated);
+    return () => window.removeEventListener("mk_products_updated", handleProductsUpdated);
+  }, []);
 
-    // Try syncing any live orders from Supabase if table exists
+  useEffect(() => {
     supabase
       .from("orders")
       .select("*")
@@ -192,12 +226,7 @@ function AdminPage() {
     setTimeout(() => {
       setOrders(getStoredOrders());
       setInventoryOverrides(getStoredInventory());
-      try {
-        const storedInq = JSON.parse(localStorage.getItem("mk_contact_inquiries_v1") || "[]");
-        setInquiries(storedInq);
-      } catch {
-        setInquiries([]);
-      }
+      setProductList(getAllProducts());
       setRefreshing(false);
       toast.success("Dashboard data refreshed");
     }, 300);
@@ -209,7 +238,55 @@ function AdminPage() {
     if (selectedOrder && selectedOrder.order_number === orderNumber) {
       setSelectedOrder({ ...selectedOrder, status: newStatus });
     }
-    toast.success(`Order ${orderNumber} updated to ${STATUS_CONFIG[newStatus]?.label}`);
+
+    const target = updated.find((o) => o.order_number === orderNumber);
+    if (target) {
+      // Sync status to Supabase database if available
+      try {
+        supabase
+          .from("orders")
+          .update({ status: newStatus })
+          .eq("order_number", orderNumber)
+          .then();
+      } catch (err) {
+        console.error("Supabase status sync error:", err);
+      }
+
+      const waOrder: WhatsAppOrderDetails = {
+        orderNumber: target.order_number,
+        customerName: target.customer_name,
+        phone: target.phone,
+        email: target.email,
+        items: target.items,
+        subtotal: target.subtotal,
+        discount: target.discount,
+        shipping: target.shipping,
+        codFee: target.cod_fee,
+        total: target.total,
+        paymentMethod: target.payment_method,
+        status: newStatus,
+        address: target.address,
+        createdAt: target.created_at,
+      };
+
+      toast.success(`Order ${orderNumber} updated to ${STATUS_CONFIG[newStatus]?.label}`, {
+        description: `Alert customer ${target.customer_name} (+91 ${target.phone}) via WhatsApp.`,
+        action: {
+          label: "📲 Send WhatsApp",
+          onClick: () => sendCustomerStatusWhatsApp(waOrder, newStatus),
+        },
+        duration: 8000,
+      });
+
+      // Automatically launch WhatsApp with pre-filled status update message
+      try {
+        sendCustomerStatusWhatsApp(waOrder, newStatus);
+      } catch (err) {
+        console.error("WhatsApp status dispatch error:", err);
+      }
+    } else {
+      toast.success(`Order ${orderNumber} updated to ${STATUS_CONFIG[newStatus]?.label}`);
+    }
   };
 
   const adjustStock = (sku: string, delta: number) => {
@@ -234,29 +311,153 @@ function AdminPage() {
     toast.success(`Stock updated: ${nextStock} units`);
   };
 
-  const handleSavePriceEdit = () => {
-    if (!editingProduct) return;
-    const sku = editingProduct.variants[0].sku;
-    const updated = {
-      ...inventoryOverrides,
-      [sku]: {
-        ...(inventoryOverrides[sku] || {
-          sku,
-          stock: 50,
-          price: editingProduct.variants[0].price,
-          mrp: editingProduct.variants[0].mrp,
-          isBestseller: editingProduct.tags.includes("bestseller"),
-          isNew: editingProduct.tags.includes("new"),
-        }),
-        price: editPriceForm.price,
-        mrp: editPriceForm.mrp,
-        stock: editPriceForm.stock,
-      },
-    };
-    setInventoryOverrides(updated);
-    saveStoredInventory(updated);
+  // Product CRUD Handlers (Add, Edit, Remove)
+  const handleOpenAddModal = () => {
     setEditingProduct(null);
-    toast.success(`${editingProduct.name} pricing and stock updated!`);
+    setProductForm({
+      name: "",
+      slug: "",
+      category: "syrups",
+      price: 299,
+      mrp: 399,
+      stock: 50,
+      short: "",
+      image: "",
+      benefits: "",
+    });
+    setIsAddModalOpen(true);
+  };
+
+  const handleOpenEditModal = (p: Product) => {
+    setEditingProduct(p);
+    const v0 = p.variants[0];
+    const override = inventoryOverrides[v0?.sku];
+    setProductForm({
+      name: p.name,
+      slug: p.slug,
+      category: p.category,
+      price: override?.price ?? v0?.price ?? 299,
+      mrp: override?.mrp ?? v0?.mrp ?? 399,
+      stock: override?.stock ?? v0?.stock ?? 50,
+      short: p.short,
+      image: p.images[0] || "",
+      benefits: (p.benefits || []).join("\n"),
+    });
+    setIsAddModalOpen(false);
+  };
+
+  const handleSaveProduct = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!productForm.name.trim()) {
+      toast.error("Please enter product name");
+      return;
+    }
+
+    if (editingProduct) {
+      // Update existing product
+      const updated = productList.map((p) => {
+        if (p.id === editingProduct.id) {
+          const v0 = p.variants[0];
+          return {
+            ...p,
+            name: productForm.name.trim(),
+            category: productForm.category,
+            short: productForm.short.trim() || p.short,
+            images: productForm.image.trim() ? [productForm.image.trim()] : p.images,
+            benefits: productForm.benefits.trim()
+              ? productForm.benefits.split("\n").filter(Boolean)
+              : p.benefits,
+            variants: [
+              {
+                ...v0,
+                price: Number(productForm.price) || v0.price,
+                mrp: Number(productForm.mrp) || v0.mrp,
+                stock: Number(productForm.stock) ?? v0.stock,
+              },
+              ...p.variants.slice(1),
+            ] as [typeof v0, ...(typeof v0)[]],
+          };
+        }
+        return p;
+      });
+
+      setProductList(updated);
+      saveAllProducts(updated);
+      setEditingProduct(null);
+      toast.success(`Product "${productForm.name}" updated successfully!`);
+    } else {
+      // Add new product
+      const slug =
+        productForm.slug.trim() ||
+        productForm.name
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/(^-|-$)/g, "");
+
+      const sku =
+        "MK-" +
+        productForm.name.slice(0, 3).toUpperCase() +
+        "-" +
+        Math.floor(Math.random() * 900 + 100);
+
+      const defaultImg = products[0]?.images[0] || "";
+
+      const newProd: Product = {
+        id: `mk-${Date.now()}`,
+        slug,
+        name: productForm.name.trim(),
+        category: productForm.category,
+        concern: ["immunity"],
+        images: [productForm.image.trim() || defaultImg],
+        variants: [
+          {
+            sku,
+            label: "Standard Pack",
+            mrp: Number(productForm.mrp) || 399,
+            price: Number(productForm.price) || 299,
+            stock: Number(productForm.stock) || 50,
+          },
+        ],
+        short: productForm.short.trim() || "Premium Ayurvedic herbal wellness formulation.",
+        benefits: productForm.benefits.trim()
+          ? productForm.benefits.split("\n").filter(Boolean)
+          : ["100% Ayurvedic ingredients", "Lab tested & certified", "Safe and effective formula"],
+        howToUse: "Use as directed on the label or as advised by your physician.",
+        tags: ["new"],
+      };
+
+      const updated = [newProd, ...productList];
+      setProductList(updated);
+      saveAllProducts(updated);
+      setIsAddModalOpen(false);
+      toast.success(`New product "${newProd.name}" added successfully!`);
+    }
+  };
+
+  const handleDeleteProduct = () => {
+    if (!productToDelete) return;
+    const updated = productList.filter((p) => p.id !== productToDelete.id);
+    setProductList(updated);
+    saveAllProducts(updated);
+    toast.success(`Product "${productToDelete.name}" removed from store.`);
+    setProductToDelete(null);
+  };
+
+  const handleResetCatalog = () => {
+    if (confirm("Restore original 10 Ayurvedic products catalog?")) {
+      const def = resetDefaultProducts();
+      setProductList(def);
+      toast.success("Restored default 10 Ayurvedic catalog!");
+    }
+  };
+
+  const handleClearOrders = () => {
+    if (confirm("Are you sure you want to clear all orders? This will empty the orders list.")) {
+      clearAllStoredOrders();
+      setOrders([]);
+      setSelectedOrder(null);
+      toast.success("Admin orders cleared successfully.");
+    }
   };
 
   // Metrics
@@ -269,13 +470,14 @@ function AdminPage() {
       .reduce((sum, o) => sum + o.total, 0);
     const pendingCount = orders.filter((o) => o.status === "COD_PENDING" || o.status === "CONFIRMED").length;
     const deliveredCount = orders.filter((o) => o.status === "DELIVERED").length;
-    const lowStockCount = products.filter((p) => {
-      const s = inventoryOverrides[p.variants[0].sku]?.stock ?? 50;
+    const lowStockCount = productList.filter((p) => {
+      const v0 = p.variants[0];
+      const s = inventoryOverrides[v0?.sku]?.stock ?? v0?.stock ?? 50;
       return s < 15;
     }).length;
 
     return { totalRev, deliveredRev, pendingCount, deliveredCount, lowStockCount };
-  }, [orders, inventoryOverrides]);
+  }, [orders, productList, inventoryOverrides]);
 
   // Filtered orders for DataTable
   const filteredOrders = useMemo(() => {
@@ -302,17 +504,17 @@ function AdminPage() {
 
   // Filtered products
   const filteredProducts = useMemo(() => {
-    return products.filter((p) => {
+    return productList.filter((p) => {
       const matchesCat = productCategoryFilter === "ALL" || p.category === productCategoryFilter;
       const q = searchQuery.toLowerCase().trim();
       const matchesSearch =
         !q ||
         p.name.toLowerCase().includes(q) ||
-        p.variants[0].sku.toLowerCase().includes(q) ||
+        (p.variants[0]?.sku || "").toLowerCase().includes(q) ||
         p.category.toLowerCase().includes(q);
       return matchesCat && matchesSearch;
     });
-  }, [productCategoryFilter, searchQuery]);
+  }, [productList, productCategoryFilter, searchQuery]);
 
   // If not authenticated, render Login Screen (Img 3 Clean Version)
   if (!isAuthenticated) {
@@ -503,7 +705,7 @@ function AdminPage() {
               <ChevronRight className="h-3 w-3 text-gray-600" />
             </button>
 
-            {/* Pages / 10 Products Tab */}
+            {/* Products Tab */}
             <button
               onClick={() => setActiveTab("products")}
               className={`flex w-full items-center justify-between rounded px-3 py-2 text-xs font-medium transition ${
@@ -514,27 +716,10 @@ function AdminPage() {
             >
               <div className="flex items-center gap-2.5">
                 <Package className="h-4 w-4 text-amber-400" />
-                <span>10 Products</span>
+                <span>Products ({productList.length})</span>
               </div>
               <ChevronRight className="h-3 w-3 text-gray-600" />
             </button>
-
-            {/* Inquiries */}
-            <button
-              onClick={() => setActiveTab("inquiries")}
-              className={`flex w-full items-center justify-between rounded px-3 py-2 text-xs font-medium transition ${
-                activeTab === "inquiries"
-                  ? "bg-gray-800 text-white"
-                  : "hover:bg-gray-800/60 hover:text-gray-200"
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <Mail className="h-4 w-4 text-purple-400" />
-                <span>Inquiries ({inquiries.length})</span>
-              </div>
-              <ChevronRight className="h-3 w-3 text-gray-600" />
-            </button>
-
           </div>
 
           {/* Sidebar Footer: Logged in as: MK Enterprises */}
@@ -989,12 +1174,25 @@ function AdminPage() {
                   <h1 className="text-2xl font-bold tracking-tight text-gray-900">Orders Management</h1>
                   <p className="text-xs text-gray-500">Track and dispatch customer orders across India</p>
                 </div>
-                <Button
-                  onClick={() => exportOrdersToCsv(orders)}
-                  className="bg-[#007bff] text-white hover:bg-blue-600 text-xs"
-                >
-                  <Download className="mr-1.5 h-3.5 w-3.5" /> Export All to CSV
-                </Button>
+                <div className="flex items-center gap-2">
+                  {orders.length > 0 && (
+                    <Button
+                      onClick={handleClearOrders}
+                      variant="outline"
+                      size="sm"
+                      className="text-xs border-rose-300 text-rose-700 hover:bg-rose-50"
+                    >
+                      <Trash2 className="mr-1 h-3.5 w-3.5" /> Clear All Orders
+                    </Button>
+                  )}
+                  <Button
+                    onClick={() => exportOrdersToCsv(orders)}
+                    className="bg-[#007bff] text-white hover:bg-blue-600 text-xs"
+                    disabled={orders.length === 0}
+                  >
+                    <Download className="mr-1.5 h-3.5 w-3.5" /> Export All to CSV
+                  </Button>
+                </div>
               </div>
 
               {/* Status Filter Bar */}
@@ -1034,7 +1232,16 @@ function AdminPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
-                      {filteredOrders.map((o) => {
+                      {filteredOrders.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="py-12 text-center text-gray-500">
+                            <ShoppingBag className="mx-auto h-8 w-8 text-gray-300" />
+                            <p className="mt-2 text-sm font-semibold text-gray-700">No customer orders yet</p>
+                            <p className="text-xs text-gray-400">Orders placed by customers will automatically appear here in real-time.</p>
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredOrders.map((o) => {
                         const cfg = STATUS_CONFIG[o.status];
                         return (
                           <tr key={o.id} className="hover:bg-gray-50 transition">
@@ -1078,18 +1285,48 @@ function AdminPage() {
                               </select>
                             </td>
                             <td className="px-4 py-3 text-right">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => setSelectedOrder(o)}
-                                className="h-7 text-xs border-gray-300"
-                              >
-                                <Eye className="mr-1 h-3 w-3" /> View
-                              </Button>
+                              <div className="flex items-center justify-end gap-1.5">
+                                <Button
+                                  size="sm"
+                                  onClick={() => {
+                                    sendCustomerStatusWhatsApp(
+                                      {
+                                        orderNumber: o.order_number,
+                                        customerName: o.customer_name,
+                                        phone: o.phone,
+                                        email: o.email,
+                                        items: o.items,
+                                        subtotal: o.subtotal,
+                                        discount: o.discount,
+                                        shipping: o.shipping,
+                                        codFee: o.cod_fee,
+                                        total: o.total,
+                                        paymentMethod: o.payment_method,
+                                        status: o.status,
+                                        address: o.address,
+                                        createdAt: o.created_at,
+                                      },
+                                      o.status
+                                    );
+                                  }}
+                                  className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm"
+                                  title={`Send WhatsApp update (${cfg.label}) to ${o.customer_name} (${o.phone})`}
+                                >
+                                  <MessageCircle className="mr-1 h-3 w-3" /> WhatsApp
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => setSelectedOrder(o)}
+                                  className="h-7 text-xs border-gray-300"
+                                >
+                                  <Eye className="mr-1 h-3 w-3" /> View
+                                </Button>
+                              </div>
                             </td>
                           </tr>
                         );
-                      })}
+                      }))}
                     </tbody>
                   </table>
                 </div>
@@ -1097,122 +1334,167 @@ function AdminPage() {
             </div>
           )}
 
-          {/* TAB 3: PRODUCTS TAB (10 PRODUCTS CATALOG) */}
+          {/* TAB 3: PRODUCTS MANAGEMENT TAB (ADD, EDIT, REMOVE) */}
           {activeTab === "products" && (
             <div className="space-y-6">
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
-                  <h1 className="text-2xl font-bold tracking-tight text-gray-900">10 Ayurvedic Products</h1>
-                  <p className="text-xs text-gray-500">Catalog inventory, pricing, MRP, and stock level controls</p>
+                  <h1 className="text-2xl font-bold tracking-tight text-gray-900">Products Management</h1>
+                  <p className="text-xs text-gray-500">
+                    Add new Ayurvedic products, edit pricing & details, or remove products from the storefront.
+                  </p>
                 </div>
-                <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800 border border-emerald-200">
-                  Total Active: {products.length} Products
-                </span>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {products.map((p) => {
-                  const sku = p.variants[0].sku;
-                  const override = inventoryOverrides[sku];
-                  const price = override?.price || p.variants[0].price;
-                  const mrp = override?.mrp || p.variants[0].mrp;
-                  const stock = override?.stock ?? 50;
-                  return (
-                    <div key={p.id} className="rounded border border-gray-200 bg-white p-4 shadow-sm">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded bg-gray-50 p-1 border">
-                          <img src={p.images[0]} alt={p.name} className="h-full w-full object-contain" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <h4 className="truncate text-xs font-bold text-gray-900" title={p.name}>{p.name}</h4>
-                          <p className="truncate text-[11px] text-gray-500">{p.short}</p>
-                          <p className="text-[10px] text-blue-600 font-medium">SKU: {sku}</p>
-                        </div>
-                      </div>
-
-                      <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-3 text-xs">
-                        <div>
-                          <span className="text-gray-500">Price:</span>{" "}
-                          <span className="font-bold text-gray-900">{inr(price)}</span>{" "}
-                          <span className="text-[10px] line-through text-gray-400">{inr(mrp)}</span>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setEditingProduct(p);
-                            setEditPriceForm({ price, mrp, stock });
-                          }}
-                          className="h-6 text-[11px] border-gray-300"
-                        >
-                          <Edit3 className="mr-1 h-3 w-3" /> Edit
-                        </Button>
-                      </div>
-
-                      {/* Stock Stepper */}
-                      <div className="mt-3 flex items-center justify-between rounded bg-gray-50 p-2 text-xs">
-                        <span className="font-medium text-gray-700">Stock Available:</span>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => adjustStock(sku, -5)}
-                            className="flex h-5 w-5 items-center justify-center rounded bg-white border border-gray-300 text-gray-700 hover:bg-gray-100"
-                          >
-                            <Minus className="h-3 w-3" />
-                          </button>
-                          <span className="w-8 text-center font-bold text-gray-900">{stock}</span>
-                          <button
-                            onClick={() => adjustStock(sku, 5)}
-                            className="flex h-5 w-5 items-center justify-center rounded bg-white border border-gray-300 text-gray-700 hover:bg-gray-100"
-                          >
-                            <Plus className="h-3 w-3" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* TAB 4: INQUIRIES TAB */}
-          {activeTab === "inquiries" && (
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h1 className="text-2xl font-bold tracking-tight text-gray-900">Contact Inquiries & Leads</h1>
-                  <p className="text-xs text-gray-500">Submissions from customer contact form</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    onClick={handleResetCatalog}
+                    variant="outline"
+                    size="sm"
+                    className="text-xs border-gray-300 hover:bg-gray-100"
+                  >
+                    Restore Default 10 Products
+                  </Button>
+                  <Button
+                    onClick={handleOpenAddModal}
+                    className="bg-[#007bff] text-white hover:bg-blue-600 text-xs shadow-sm font-semibold"
+                  >
+                    <Plus className="mr-1.5 h-4 w-4" /> + Add New Product
+                  </Button>
                 </div>
-                <span className="rounded bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-800">
-                  {inquiries.length} Submissions
-                </span>
               </div>
 
-              {inquiries.length === 0 ? (
-                <div className="rounded border border-gray-200 bg-white p-8 text-center text-gray-500">
-                  No contact inquiries received yet. Submissions from the /contact page will appear here instantly.
+              {/* Filter and Search Bar */}
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded border border-gray-200 bg-white p-3 shadow-sm">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-semibold text-gray-600">Category:</span>
+                  <select
+                    value={productCategoryFilter}
+                    onChange={(e) => setProductCategoryFilter(e.target.value)}
+                    className="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700"
+                  >
+                    <option value="ALL">All Categories ({productList.length})</option>
+                    {categories.map((c) => (
+                      <option key={c.slug} value={c.slug}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="text-xs text-gray-500">
+                  Showing <b>{filteredProducts.length}</b> products in store
+                </div>
+              </div>
+
+              {filteredProducts.length === 0 ? (
+                <div className="rounded border border-gray-200 bg-white p-12 text-center text-gray-500">
+                  <Package className="mx-auto h-12 w-12 text-gray-300" />
+                  <p className="mt-3 text-sm font-semibold text-gray-700">No products match your filter.</p>
+                  <Button onClick={handleOpenAddModal} className="mt-4 bg-[#007bff] text-white" size="sm">
+                    <Plus className="mr-1 h-3.5 w-3.5" /> Add a Product
+                  </Button>
                 </div>
               ) : (
-                <div className="space-y-4">
-                  {inquiries.map((inq: any, i: number) => (
-                    <div key={i} className="rounded border border-gray-200 bg-white p-5 shadow-sm">
-                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3">
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {filteredProducts.map((p) => {
+                    const v0 = p.variants[0];
+                    const sku = v0?.sku || p.id;
+                    const override = inventoryOverrides[sku];
+                    const price = override?.price || v0?.price || 299;
+                    const mrp = override?.mrp || v0?.mrp || 399;
+                    const stock = override?.stock ?? v0?.stock ?? 50;
+
+                    return (
+                      <div
+                        key={p.id}
+                        className="flex flex-col justify-between rounded-lg border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition"
+                      >
                         <div>
-                          <span className="text-xs font-bold text-blue-600">{inq.ticket || `TICKET-${i + 1}`}</span>
-                          <h4 className="text-sm font-semibold text-gray-900">{inq.name}</h4>
+                          <div className="flex items-start gap-3">
+                            <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded bg-gray-50 p-1 border">
+                              <img
+                                src={p.images[0]}
+                                alt={p.name}
+                                className="h-full w-full object-contain"
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).src = products[0]?.images[0] || "";
+                                }}
+                              />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5">
+                                <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-blue-700">
+                                  {p.category}
+                                </span>
+                                {stock < 15 && (
+                                  <span className="rounded bg-rose-50 px-1.5 py-0.5 text-[10px] font-bold text-rose-700">
+                                    Low Stock
+                                  </span>
+                                )}
+                              </div>
+                              <h4 className="mt-1 line-clamp-1 text-xs font-bold text-gray-900" title={p.name}>
+                                {p.name}
+                              </h4>
+                              <p className="line-clamp-2 mt-0.5 text-[11px] text-gray-500">{p.short}</p>
+                              <p className="mt-1 text-[10px] text-gray-400 font-mono">SKU: {sku}</p>
+                            </div>
+                          </div>
+
+                          <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-3 text-xs">
+                            <div>
+                              <span className="text-gray-500">Price:</span>{" "}
+                              <span className="font-bold text-gray-900">{inr(price)}</span>{" "}
+                              <span className="text-[10px] line-through text-gray-400">{inr(mrp)}</span>
+                            </div>
+                            <div className="text-[11px] font-medium text-emerald-700">
+                              {Math.round(((mrp - price) / mrp) * 100)}% OFF
+                            </div>
+                          </div>
+
+                          {/* Stock Stepper */}
+                          <div className="mt-2.5 flex items-center justify-between rounded bg-gray-50 p-2 text-xs">
+                            <span className="font-medium text-gray-700">Stock Units:</span>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => adjustStock(sku, -5)}
+                                className="flex h-5 w-5 items-center justify-center rounded bg-white border border-gray-300 text-gray-700 hover:bg-gray-100"
+                                title="Decrease stock by 5"
+                              >
+                                <Minus className="h-3 w-3" />
+                              </button>
+                              <span className="w-8 text-center font-bold text-gray-900">{stock}</span>
+                              <button
+                                onClick={() => adjustStock(sku, 5)}
+                                className="flex h-5 w-5 items-center justify-center rounded bg-white border border-gray-300 text-gray-700 hover:bg-gray-100"
+                                title="Increase stock by 5"
+                              >
+                                <Plus className="h-3 w-3" />
+                              </button>
+                            </div>
+                          </div>
                         </div>
-                        <div className="text-right text-xs text-gray-500">
-                          {inq.createdAt ? new Date(inq.createdAt).toLocaleString("en-IN") : "Recent"}
+
+                        {/* Card Action Buttons (EDIT & REMOVE) */}
+                        <div className="mt-4 flex items-center gap-2 border-t border-gray-100 pt-3">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleOpenEditModal(p)}
+                            className="flex-1 h-7 text-xs border-blue-200 text-blue-700 hover:bg-blue-50"
+                          >
+                            <Edit3 className="mr-1 h-3 w-3" /> Edit Product
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setProductToDelete(p)}
+                            className="h-7 text-xs border-rose-200 text-rose-700 hover:bg-rose-50 px-2.5"
+                            title="Remove Product"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
                         </div>
                       </div>
-                      <div className="mt-3 text-xs text-gray-700 space-y-1">
-                        <p><span className="font-semibold text-gray-900">Phone:</span> {inq.phone}</p>
-                        {inq.email && <p><span className="font-semibold text-gray-900">Email:</span> {inq.email}</p>}
-                        <p><span className="font-semibold text-gray-900">Subject:</span> {inq.subject}</p>
-                        <p className="mt-2 rounded bg-gray-50 p-3 text-gray-800 border">{inq.message}</p>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1297,6 +1579,98 @@ function AdminPage() {
               </div>
             </div>
 
+            {/* WhatsApp Direct Actions */}
+            <div className="mt-4 rounded-lg border border-emerald-300 bg-emerald-50/70 p-3.5 text-xs space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-emerald-900 flex items-center gap-1.5">
+                  <MessageCircle className="h-4 w-4 text-emerald-600" />
+                  WhatsApp Direct Communication:
+                </span>
+                <span className="text-[11px] text-emerald-700 font-medium">Customer: +91 {selectedOrder.phone}</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    sendCustomerInvoiceWhatsApp({
+                      orderNumber: selectedOrder.order_number,
+                      customerName: selectedOrder.customer_name,
+                      phone: selectedOrder.phone,
+                      email: selectedOrder.email,
+                      items: selectedOrder.items,
+                      subtotal: selectedOrder.subtotal,
+                      discount: selectedOrder.discount,
+                      shipping: selectedOrder.shipping,
+                      codFee: selectedOrder.cod_fee,
+                      total: selectedOrder.total,
+                      paymentMethod: selectedOrder.payment_method,
+                      status: selectedOrder.status,
+                      address: selectedOrder.address,
+                      createdAt: selectedOrder.created_at,
+                    });
+                  }}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-8 shadow-sm font-semibold"
+                >
+                  <FileText className="mr-1.5 h-3.5 w-3.5" /> Send Invoice to WhatsApp
+                </Button>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    sendCustomerStatusWhatsApp(
+                      {
+                        orderNumber: selectedOrder.order_number,
+                        customerName: selectedOrder.customer_name,
+                        phone: selectedOrder.phone,
+                        email: selectedOrder.email,
+                        items: selectedOrder.items,
+                        subtotal: selectedOrder.subtotal,
+                        discount: selectedOrder.discount,
+                        shipping: selectedOrder.shipping,
+                        codFee: selectedOrder.cod_fee,
+                        total: selectedOrder.total,
+                        paymentMethod: selectedOrder.payment_method,
+                        status: selectedOrder.status,
+                        address: selectedOrder.address,
+                        createdAt: selectedOrder.created_at,
+                      },
+                      selectedOrder.status
+                    );
+                  }}
+                  className="border-emerald-600 text-emerald-800 hover:bg-emerald-100 text-xs h-8 font-medium"
+                >
+                  <Send className="mr-1.5 h-3.5 w-3.5 text-emerald-600" /> Send Status ({STATUS_CONFIG[selectedOrder.status].label})
+                </Button>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    sendAdminNewOrderWhatsApp({
+                      orderNumber: selectedOrder.order_number,
+                      customerName: selectedOrder.customer_name,
+                      phone: selectedOrder.phone,
+                      email: selectedOrder.email,
+                      items: selectedOrder.items,
+                      subtotal: selectedOrder.subtotal,
+                      discount: selectedOrder.discount,
+                      shipping: selectedOrder.shipping,
+                      codFee: selectedOrder.cod_fee,
+                      total: selectedOrder.total,
+                      paymentMethod: selectedOrder.payment_method,
+                      status: selectedOrder.status,
+                      address: selectedOrder.address,
+                      createdAt: selectedOrder.created_at,
+                    });
+                  }}
+                  className="border-blue-500 text-blue-700 hover:bg-blue-50 text-xs h-8 font-medium"
+                >
+                  <Send className="mr-1.5 h-3.5 w-3.5 text-blue-600" /> Forward to Admin (+91 91117 22209)
+                </Button>
+              </div>
+            </div>
+
             {/* Buttons */}
             <div className="mt-6 flex justify-end gap-2 border-t pt-4">
               <Button
@@ -1319,10 +1693,150 @@ function AdminPage() {
         </div>
       )}
 
-      {/* MODAL 2: EDIT PRODUCT MODAL */}
+      {/* MODAL 2: ADD NEW PRODUCT MODAL */}
+      {isAddModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm overflow-y-auto">
+          <div className="relative w-full max-w-lg rounded-lg border border-gray-300 bg-white p-6 text-gray-900 shadow-2xl my-8">
+            <button
+              onClick={() => setIsAddModalOpen(false)}
+              className="absolute right-4 top-4 rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <div className="border-b pb-3">
+              <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                <Plus className="h-4 w-4 text-blue-600" /> Add New Ayurvedic Product
+              </h3>
+              <p className="text-xs text-gray-500">
+                Enter product details to publish to your storefront
+              </p>
+            </div>
+
+            <form onSubmit={handleSaveProduct} className="mt-4 space-y-3 text-xs">
+              <div>
+                <label className="mb-1 block font-semibold text-gray-700">Product Name *</label>
+                <Input
+                  type="text"
+                  placeholder="e.g. Ashwagandha Gold Wellness Syrup"
+                  value={productForm.name}
+                  onChange={(e) => setProductForm({ ...productForm, name: e.target.value })}
+                  className="bg-white"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block font-semibold text-gray-700">Category</label>
+                  <select
+                    value={productForm.category}
+                    onChange={(e) => setProductForm({ ...productForm, category: e.target.value })}
+                    className="w-full rounded border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-800"
+                  >
+                    {categories.map((c) => (
+                      <option key={c.slug} value={c.slug}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block font-semibold text-gray-700">Stock Units</label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={productForm.stock}
+                    onChange={(e) => setProductForm({ ...productForm, stock: Number(e.target.value) })}
+                    className="bg-white"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block font-semibold text-gray-700">Selling Price (₹) *</label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={productForm.price}
+                    onChange={(e) => setProductForm({ ...productForm, price: Number(e.target.value) })}
+                    className="bg-white"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block font-semibold text-gray-700">MRP Display (₹)</label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={productForm.mrp}
+                    onChange={(e) => setProductForm({ ...productForm, mrp: Number(e.target.value) })}
+                    className="bg-white"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block font-semibold text-gray-700">Short Description</label>
+                <textarea
+                  rows={2}
+                  placeholder="Brief description of the Ayurvedic formulation..."
+                  value={productForm.short}
+                  onChange={(e) => setProductForm({ ...productForm, short: e.target.value })}
+                  className="w-full rounded border border-gray-300 p-2 text-xs focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block font-semibold text-gray-700">Image URL (Optional)</label>
+                <Input
+                  type="text"
+                  placeholder="https://... (Leave blank for default Ayurvedic bottle image)"
+                  value={productForm.image}
+                  onChange={(e) => setProductForm({ ...productForm, image: e.target.value })}
+                  className="bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block font-semibold text-gray-700">Key Benefits (one per line)</label>
+                <textarea
+                  rows={2}
+                  placeholder="100% Herbal & Pure&#10;Supports immune health&#10;No side effects"
+                  value={productForm.benefits}
+                  onChange={(e) => setProductForm({ ...productForm, benefits: e.target.value })}
+                  className="w-full rounded border border-gray-300 p-2 text-xs focus:outline-none"
+                />
+              </div>
+
+              <div className="mt-5 flex justify-end gap-2 border-t pt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsAddModalOpen(false)}
+                  className="text-xs"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  size="sm"
+                  className="bg-[#007bff] text-white hover:bg-blue-600 text-xs font-semibold"
+                >
+                  Save & Publish Product
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3: EDIT PRODUCT MODAL */}
       {editingProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-          <div className="relative w-full max-w-md rounded-lg border border-gray-300 bg-white p-6 text-gray-900 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm overflow-y-auto">
+          <div className="relative w-full max-w-lg rounded-lg border border-gray-300 bg-white p-6 text-gray-900 shadow-2xl my-8">
             <button
               onClick={() => setEditingProduct(null)}
               className="absolute right-4 top-4 rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
@@ -1332,61 +1846,167 @@ function AdminPage() {
 
             <div className="flex items-center gap-3 border-b pb-3">
               <div className="flex h-12 w-12 items-center justify-center rounded bg-gray-50 p-1 border">
-                <img src={editingProduct.images[0]} alt={editingProduct.name} className="h-full w-full object-contain" />
+                <img
+                  src={editingProduct.images[0]}
+                  alt={editingProduct.name}
+                  className="h-full w-full object-contain"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = products[0]?.images[0] || "";
+                  }}
+                />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-gray-900">{editingProduct.name}</h3>
-                <p className="text-[11px] text-gray-500">SKU: {editingProduct.variants[0].sku}</p>
+                <h3 className="text-sm font-bold text-gray-900">Edit Product: {editingProduct.name}</h3>
+                <p className="text-[11px] text-gray-500">ID: {editingProduct.id} · SKU: {editingProduct.variants[0]?.sku}</p>
               </div>
             </div>
 
-            <div className="mt-4 space-y-3 text-xs">
+            <form onSubmit={handleSaveProduct} className="mt-4 space-y-3 text-xs">
               <div>
-                <label className="mb-1 block font-semibold text-gray-700">Selling Price (₹)</label>
+                <label className="mb-1 block font-semibold text-gray-700">Product Name *</label>
                 <Input
-                  type="number"
-                  value={editPriceForm.price}
-                  onChange={(e) => setEditPriceForm({ ...editPriceForm, price: Number(e.target.value) })}
+                  type="text"
+                  value={productForm.name}
+                  onChange={(e) => setProductForm({ ...productForm, name: e.target.value })}
+                  className="bg-white"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block font-semibold text-gray-700">Category</label>
+                  <select
+                    value={productForm.category}
+                    onChange={(e) => setProductForm({ ...productForm, category: e.target.value })}
+                    className="w-full rounded border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-800"
+                  >
+                    {categories.map((c) => (
+                      <option key={c.slug} value={c.slug}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block font-semibold text-gray-700">Stock Units</label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={productForm.stock}
+                    onChange={(e) => setProductForm({ ...productForm, stock: Number(e.target.value) })}
+                    className="bg-white"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block font-semibold text-gray-700">Selling Price (₹) *</label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={productForm.price}
+                    onChange={(e) => setProductForm({ ...productForm, price: Number(e.target.value) })}
+                    className="bg-white"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block font-semibold text-gray-700">MRP Display (₹)</label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={productForm.mrp}
+                    onChange={(e) => setProductForm({ ...productForm, mrp: Number(e.target.value) })}
+                    className="bg-white"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block font-semibold text-gray-700">Short Description</label>
+                <textarea
+                  rows={2}
+                  value={productForm.short}
+                  onChange={(e) => setProductForm({ ...productForm, short: e.target.value })}
+                  className="w-full rounded border border-gray-300 p-2 text-xs focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block font-semibold text-gray-700">Image URL</label>
+                <Input
+                  type="text"
+                  value={productForm.image}
+                  onChange={(e) => setProductForm({ ...productForm, image: e.target.value })}
                   className="bg-white"
                 />
               </div>
 
               <div>
-                <label className="mb-1 block font-semibold text-gray-700">MRP Display (₹)</label>
-                <Input
-                  type="number"
-                  value={editPriceForm.mrp}
-                  onChange={(e) => setEditPriceForm({ ...editPriceForm, mrp: Number(e.target.value) })}
-                  className="bg-white"
+                <label className="mb-1 block font-semibold text-gray-700">Key Benefits (one per line)</label>
+                <textarea
+                  rows={2}
+                  value={productForm.benefits}
+                  onChange={(e) => setProductForm({ ...productForm, benefits: e.target.value })}
+                  className="w-full rounded border border-gray-300 p-2 text-xs focus:outline-none"
                 />
               </div>
 
-              <div>
-                <label className="mb-1 block font-semibold text-gray-700">Stock Inventory Units</label>
-                <Input
-                  type="number"
-                  value={editPriceForm.stock}
-                  onChange={(e) => setEditPriceForm({ ...editPriceForm, stock: Number(e.target.value) })}
-                  className="bg-white"
-                />
+              <div className="mt-5 flex justify-end gap-2 border-t pt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setEditingProduct(null)}
+                  className="text-xs"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  size="sm"
+                  className="bg-[#007bff] text-white hover:bg-blue-600 text-xs font-semibold"
+                >
+                  Save Changes
+                </Button>
               </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 4: DELETE PRODUCT CONFIRMATION */}
+      {productToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="relative w-full max-w-sm rounded-lg border border-gray-300 bg-white p-6 text-gray-900 shadow-2xl">
+            <div className="flex items-center gap-3 text-rose-600">
+              <div className="rounded-full bg-rose-100 p-2">
+                <Trash2 className="h-5 w-5" />
+              </div>
+              <h3 className="text-base font-bold text-gray-900">Remove Product</h3>
             </div>
+
+            <p className="mt-3 text-xs text-gray-600 leading-relaxed">
+              Are you sure you want to remove <b>"{productToDelete.name}"</b>? It will be immediately deleted from your online store catalog.
+            </p>
 
             <div className="mt-6 flex justify-end gap-2 border-t pt-4">
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setEditingProduct(null)}
+                onClick={() => setProductToDelete(null)}
                 className="text-xs"
               >
                 Cancel
               </Button>
               <Button
                 size="sm"
-                onClick={handleSavePriceEdit}
-                className="bg-[#007bff] text-white hover:bg-blue-600 text-xs"
+                onClick={handleDeleteProduct}
+                className="bg-[#dc3545] text-white hover:bg-rose-700 text-xs font-semibold"
               >
-                Save Changes
+                Yes, Remove Product
               </Button>
             </div>
           </div>

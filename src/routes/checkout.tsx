@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -17,30 +17,45 @@ export const Route = createFileRoute("/checkout")({
 });
 
 function Checkout() {
-  const { lines, coupon, clear } = useCart();
+  const { lines, coupon } = useCart();
   const nav = useNavigate();
-  const place = useServerFn(createOrder);
-  const [method, setMethod] = useState<"cod" | "online">("cod");
-  const [busy, setBusy] = useState(false);
   const [a, setA] = useState({ name: "", phone: "", email: "", line1: "", line2: "", landmark: "", pincode: "", city: "", state: "" });
-  const t = computeTotals(lines, coupon, method);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("mk_checkout_address");
+      if (saved) setA(JSON.parse(saved));
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
+  const t = computeTotals(lines, coupon, null);
   const f = (k: keyof typeof a, label: string, extra = {}) => (
     <Input placeholder={label} value={a[k]} onChange={(e) => setA({ ...a, [k]: e.target.value })} {...extra} />
   );
 
-  const submit = async () => {
-    setBusy(true);
-    try {
-      const { data: s } = await supabase.auth.getSession();
-      const r = await place({ data: { lines, coupon, method, address: a, accessToken: s.session?.access_token ?? null } });
-      clear();
-      nav({ to: "/track-order" });
-      toast.success(`Order ${r.orderNumber} placed! Save this ID to track your order.`, { duration: 15000 });
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not place order");
-    } finally {
-      setBusy(false);
+  const handleProceedToPayment = () => {
+    if (!a.name.trim()) {
+      toast.error("Please enter your Full Name");
+      return;
     }
+    const cleanPhone = a.phone.replace(/\D/g, "");
+    if (!cleanPhone || cleanPhone.length < 10) {
+      toast.error("Please enter a valid 10-digit mobile number");
+      return;
+    }
+    if (!a.line1.trim()) {
+      toast.error("Please enter your Delivery Address");
+      return;
+    }
+    if (!a.pincode.trim() || a.pincode.replace(/\D/g, "").length < 6) {
+      toast.error("Please enter a valid 6-digit Pincode");
+      return;
+    }
+
+    localStorage.setItem("mk_checkout_address", JSON.stringify(a));
+    nav({ to: "/payment" });
   };
 
   if (t.items.length === 0) return <div className="py-20 text-center"><p className="text-muted-foreground">Your cart is empty.</p><Button className="mt-4" asChild><Link to="/shop">Shop Now</Link></Button></div>;
@@ -79,7 +94,13 @@ function Checkout() {
           <h3 className="uppercase tracking-brand">Order Summary</h3>
           {t.items.map((i) => <p key={i.sku} className="text-sm">{i.name} × {i.qty}</p>)}
           <Summary t={t} />
-          <Button className="w-full" size="lg" disabled={busy} onClick={submit}>{busy ? "Placing…" : "Place Order"}</Button>
+          <Button
+            className="w-full bg-gold-gradient font-bold uppercase tracking-wider text-black hover:opacity-90 shadow-md"
+            size="lg"
+            onClick={handleProceedToPayment}
+          >
+            Proceed to Payment
+          </Button>
         </div>
       </div>
     </>

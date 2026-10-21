@@ -127,6 +127,25 @@ function MobileBar() {
   );
 }
 
+export function WhatsAppFloatingButton() {
+  return (
+    <aside aria-label="WhatsApp Support" className="fixed bottom-20 right-4 z-50 md:bottom-6 md:right-6">
+      <a
+        href="https://wa.me/919111722209?text=Hello%20MK%20Enterprises,%20I%20have%20an%20inquiry."
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="Chat on WhatsApp"
+        className="group flex items-center gap-2.5 rounded-full bg-[#25D366] p-3.5 text-white shadow-xl shadow-black/30 transition-all duration-300 hover:scale-105 hover:bg-[#20ba59] hover:shadow-2xl focus:outline-none focus:ring-4 focus:ring-[#25D366]/40"
+      >
+        <MessageCircle className="h-6 w-6 text-white" />
+        <span className="max-w-0 overflow-hidden whitespace-nowrap text-xs font-bold uppercase tracking-wider transition-all duration-300 ease-in-out group-hover:max-w-xs group-hover:pr-2">
+          Chat with Us
+        </span>
+      </a>
+    </aside>
+  );
+}
+
 export function SiteLayout({ children }: { children: ReactNode }) {
   const loc = useLocation();
   const isAdmin = loc.pathname.startsWith("/admin");
@@ -140,6 +159,7 @@ export function SiteLayout({ children }: { children: ReactNode }) {
       <Footer />
       <MobileBar />
       <CartDrawer />
+      <WhatsAppFloatingButton />
     </div>
   );
 }
