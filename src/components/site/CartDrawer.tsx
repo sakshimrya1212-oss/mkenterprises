@@ -22,10 +22,6 @@ export function CartDrawer() {
           <p className="py-10 text-center text-sm text-muted-foreground">Your cart is empty.</p>
         ) : (
           <>
-            <div className="rounded-md bg-muted p-3 text-xs">
-              {left > 0 ? <>Add <b>{inr(left)}</b> more for FREE shipping</> : <>You've unlocked <b>FREE shipping</b>!</>}
-              <Progress value={Math.min(100, (t.subtotal / FREE_SHIPPING_MIN) * 100)} className="mt-2 h-1.5" />
-            </div>
             <div className="flex-1 space-y-4 overflow-y-auto py-2">
               {t.items.map((i) => (
                 <div key={i.sku} className="flex gap-3">
@@ -44,8 +40,6 @@ export function CartDrawer() {
               ))}
             </div>
             <div className="space-y-3 border-t pt-4">
-              <Input placeholder="Coupon code (try MK15)" value={coupon} onChange={(e) => setCoupon(e.target.value)} />
-              {t.couponError && <p className="text-xs text-destructive">{t.couponError}</p>}
               <div className="flex justify-between text-sm"><span>Subtotal</span><span>{inr(t.subtotal)}</span></div>
               {t.discount > 0 && <div className="flex justify-between text-sm text-success"><span>Discount ({t.coupon})</span><span>−{inr(t.discount)}</span></div>}
               <div className="grid grid-cols-2 gap-2">

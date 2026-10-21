@@ -62,13 +62,17 @@ function Checkout() {
             <div className="grid gap-3 sm:grid-cols-3">{f("landmark", "Landmark")}{f("city", "City")}{f("state", "State")}</div>
           </section>
           <section className="space-y-3 rounded-md border bg-card p-5">
-            <h3 className="uppercase tracking-brand">2. Shipping</h3>
-            <p className="text-sm">Standard delivery (3–7 days) — {t.shipping ? `₹${t.shipping}` : "FREE"}</p>
-          </section>
-          <section className="space-y-3 rounded-md border bg-card p-5">
-            <h3 className="uppercase tracking-brand">3. Payment</h3>
-            <label className="flex items-center gap-2 text-sm"><input type="radio" checked={method === "cod"} disabled={!t.codAllowed} onChange={() => setMethod("cod")} /> Cash on Delivery (+₹40){!t.codAllowed && " — not available above ₹5,000"}</label>
-            <label className="flex items-center gap-2 text-sm text-muted-foreground"><input type="radio" disabled /> UPI / Cards / Net Banking — coming soon</label>
+            <h3 className="uppercase tracking-brand">2. Shipping Policy</h3>
+            <ul className="space-y-2 text-xs leading-relaxed text-muted-foreground">
+              <li className="flex items-start gap-2">
+                <span className="font-bold text-gold-dark">1.</span>
+                <span><b>Dispatch & Courier:</b> Orders are processed and dispatched within 24–48 hours through certified express couriers across India.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="font-bold text-gold-dark">2.</span>
+                <span><b>Delivery Timeline:</b> Estimated doorstep delivery within 3–7 working days with full tracking updates.</span>
+              </li>
+            </ul>
           </section>
         </div>
         <div className="h-fit space-y-4 rounded-md border border-gold-dark/40 bg-card p-5 md:sticky md:top-32">

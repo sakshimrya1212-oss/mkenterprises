@@ -66,8 +66,13 @@ function Contact() {
         console.error(err);
       }
 
-      toast.success("Thank you! Your message has been sent successfully.");
-    }, 600);
+      // Open WhatsApp with inquiry details pre-filled
+      const waText = `Hello MK Enterprises,\n\nI want to submit an inquiry:\n• *Name:* ${formData.name}\n• *Phone:* ${formData.phone}\n• *Email:* ${formData.email || "N/A"}\n• *Subject:* ${formData.subject}\n• *Message:* ${formData.message}\n• *Ref Ticket:* ${ticket}`;
+      const waUrl = `https://wa.me/919111722209?text=${encodeURIComponent(waText)}`;
+      window.open(waUrl, "_blank");
+
+      toast.success("Thank you! Opening WhatsApp to send your query...");
+    }, 400);
   };
 
   const handleReset = () => {
@@ -160,18 +165,6 @@ function Contact() {
                     <p className="text-[11px] text-muted-foreground">Sunday: Closed (WhatsApp inquiries active)</p>
                   </div>
                 </div>
-              </div>
-
-              {/* Instant WhatsApp Quick Button */}
-              <div className="mt-6 pt-4 border-t border-border">
-                <a
-                  href="https://wa.me/919111722209?text=Hello%20MK%20Enterprises,%20I%20have%20an%20inquiry%20regarding%20your%20Ayurvedic%20products."
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex w-full items-center justify-center gap-2 rounded-md bg-[#25D366] px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-sm transition hover:bg-[#20ba59]"
-                >
-                  <MessageCircle className="h-4 w-4" /> Chat on WhatsApp (+91 91117 22209)
-                </a>
               </div>
             </div>
           </div>
@@ -325,16 +318,16 @@ function Contact() {
                       <Button
                         type="submit"
                         disabled={submitting}
-                        className="w-full bg-gold-gradient font-bold uppercase tracking-wider text-primary-foreground hover:opacity-95"
+                        className="w-full bg-gold-gradient font-bold uppercase tracking-wider text-black hover:opacity-90 shadow-md transition"
                         size="lg"
                       >
                         {submitting ? (
                           <span className="flex items-center gap-2">
-                            Sending Inquiry...
+                            Opening WhatsApp...
                           </span>
                         ) : (
                           <span className="flex items-center gap-2">
-                            <Send className="h-4 w-4" /> Submit Inquiry
+                            <MessageCircle className="h-5 w-5" /> Submit Query on WhatsApp
                           </span>
                         )}
                       </Button>

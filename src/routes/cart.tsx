@@ -57,8 +57,6 @@ function CartPage() {
             </div>
             <div className="h-fit space-y-4 rounded-md border border-gold-dark/40 bg-card p-5">
               <h3 className="uppercase tracking-brand">Order Summary</h3>
-              <Input placeholder="Coupon code" value={coupon} onChange={(e) => setCoupon(e.target.value)} />
-              {t.couponError && <p className="text-xs text-destructive">{t.couponError}</p>}
               <Summary t={t} />
               <Button className="w-full" size="lg" asChild><Link to="/checkout">Proceed to Checkout</Link></Button>
             </div>
