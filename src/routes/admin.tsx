@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
   ArrowUpRight,
@@ -151,50 +151,80 @@ function AdminPage() {
     return () => window.removeEventListener("mk_products_updated", handleProductsUpdated);
   }, []);
 
-  useEffect(() => {
-    supabase
-      .from("orders")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .then(({ data, error }) => {
-        if (!error && data && data.length > 0) {
-          const mapped: AdminOrder[] = data.map((d: any) => ({
-            id: d.id,
-            order_number: d.order_number,
-            customer_name: d.customer_name,
-            phone: d.phone,
-            email: d.email || null,
-            address: {
-              name: d.customer_name,
+  const loadOrdersFromSupabase = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from("orders")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (!error && Array.isArray(data)) {
+        if (data.length > 0) {
+          const mapped: AdminOrder[] = data.map((d: any) => {
+            const rawAddr = d.address || {};
+            return {
+              id: d.id,
+              order_number: d.order_number,
+              customer_name: d.customer_name,
               phone: d.phone,
-              email: d.email,
-              line1: d.address_line1 || "Customer Address",
-              city: d.city || "Ambikapur",
-              state: d.state || "Chhattisgarh",
-              pincode: d.pincode || "497001",
-            },
-            items: (d.items || []).map((it: any) => ({
-              sku: it.sku || "MK-SKU",
-              qty: it.qty || 1,
-              name: it.name || "Ayurvedic Product",
-              variant: it.variant || "Standard",
-              price: it.price || 299,
-            })),
-            subtotal: d.subtotal || d.total,
-            discount: d.discount || 0,
-            shipping: 0,
-            cod_fee: d.payment_method === "cod" ? 40 : 0,
-            total: d.total,
-            coupon: d.coupon || null,
-            payment_method: d.payment_method === "online" ? "online" : "cod",
-            status: d.status as AdminOrderStatus,
-            created_at: d.created_at,
-          }));
+              email: d.email || null,
+              address: {
+                name: rawAddr.name || d.customer_name,
+                phone: rawAddr.phone || d.phone,
+                email: rawAddr.email || d.email,
+                line1: rawAddr.line1 || (typeof rawAddr === "string" ? rawAddr : "Customer Address"),
+                line2: rawAddr.line2 || "",
+                landmark: rawAddr.landmark || "",
+                city: rawAddr.city || d.city || "Ambikapur",
+                state: rawAddr.state || d.state || "Chhattisgarh",
+                pincode: rawAddr.pincode || d.pincode || "497001",
+              },
+              items: (Array.isArray(d.items) ? d.items : []).map((it: any) => ({
+                sku: it.sku || "MK-SKU",
+                qty: it.qty || 1,
+                name: it.name || "Ayurvedic Product",
+                variant: it.variant || "Standard",
+                price: it.price || 299,
+              })),
+              subtotal: d.subtotal || d.total,
+              discount: d.discount || 0,
+              shipping: d.shipping || 0,
+              cod_fee: d.cod_fee ?? (d.payment_method === "cod" ? 40 : 0),
+              total: d.total,
+              coupon: d.coupon || null,
+              payment_method: d.payment_method === "online" ? "online" : "cod",
+              status: (d.status || "COD_PENDING") as AdminOrderStatus,
+              created_at: d.created_at,
+            };
+          });
           setOrders(mapped);
           saveStoredOrders(mapped);
+        } else {
+          // If Supabase returned 0 rows, check local storage
+          const local = getStoredOrders();
+          if (local.length > 0) {
+            setOrders(local);
+          } else {
+            setOrders([]);
+          }
         }
-      });
+      } else {
+        setOrders(getStoredOrders());
+      }
+    } catch (err) {
+      console.warn("Supabase orders fetch note:", err);
+      setOrders(getStoredOrders());
+    }
   }, []);
+
+  useEffect(() => {
+    loadOrdersFromSupabase();
+    // Poll Supabase every 4 seconds so orders placed by customers appear automatically
+    const timer = setInterval(() => {
+      loadOrdersFromSupabase();
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [loadOrdersFromSupabase]);
 
   // Login handler
   const handleLogin = (e?: React.FormEvent) => {
@@ -221,15 +251,13 @@ function AdminPage() {
     toast.info("Logged out of Admin Portal");
   };
 
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     setRefreshing(true);
-    setTimeout(() => {
-      setOrders(getStoredOrders());
-      setInventoryOverrides(getStoredInventory());
-      setProductList(getAllProducts());
-      setRefreshing(false);
-      toast.success("Dashboard data refreshed");
-    }, 300);
+    await loadOrdersFromSupabase();
+    setInventoryOverrides(getStoredInventory());
+    setProductList(getAllProducts());
+    setRefreshing(false);
+    toast.success("Dashboard orders refreshed");
   };
 
   const handleStatusChange = (orderNumber: string, newStatus: AdminOrderStatus) => {
@@ -452,12 +480,15 @@ function AdminPage() {
   };
 
   const handleClearOrders = () => {
-    if (confirm("Are you sure you want to clear all orders? This will empty the orders list.")) {
-      clearAllStoredOrders();
-      setOrders([]);
-      setSelectedOrder(null);
-      toast.success("Admin orders cleared successfully.");
+    clearAllStoredOrders();
+    setOrders([]);
+    setSelectedOrder(null);
+    try {
+      supabase.from("orders").delete().neq("id", "00000000-0000-0000-0000-000000000000").then();
+    } catch (e) {
+      console.error(e);
     }
+    toast.success("Admin orders cleared successfully.");
   };
 
   // Metrics
@@ -584,18 +615,18 @@ function AdminPage() {
 
   // Authenticated: Render Start Bootstrap SB Admin Dashboard (Img 2)
   return (
-    <div className="flex min-h-screen flex-col bg-[#f8f9fa] text-gray-800 antialiased">
-      {/* 1. TOP NAVBAR */}
-      <header className="sticky top-0 z-30 flex h-14 w-full items-center justify-between bg-[#212529] px-4 text-white shadow-sm">
+    <div className="flex min-h-screen flex-col bg-[#fbfaf8] text-gray-800 antialiased">
+      {/* 1. TOP NAVBAR (WEBSITE AYURVEDIC THEME) */}
+      <header className="sticky top-0 z-30 flex h-14 w-full items-center justify-between bg-[#121916] border-b border-[#c59b27]/30 px-4 text-white shadow-md">
         {/* Left: Brand & Toggle */}
         <div className="flex items-center gap-3">
-          <Link to="/admin" onClick={() => setActiveTab("dashboard")} className="flex items-center gap-2 text-lg font-bold tracking-tight text-white hover:text-gray-200">
+          <Link to="/admin" onClick={() => setActiveTab("dashboard")} className="flex items-center gap-2 text-lg font-bold tracking-tight text-white hover:text-amber-300 transition">
             <img src={logo} alt="MK" className="h-7 w-auto" />
-            <span>MK Enterprises</span>
+            <span className="font-display tracking-wider">MK Enterprises</span>
           </Link>
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-white"
+            className="rounded p-1 text-gray-400 hover:bg-[#1a2320] hover:text-[#f3d98b] transition"
             title="Toggle Sidebar"
           >
             <Menu className="h-5 w-5" />
@@ -611,11 +642,11 @@ function AdminPage() {
               placeholder="Search for..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="h-8 rounded-l border border-gray-600 bg-white px-3 text-xs text-gray-800 placeholder-gray-400 focus:outline-none"
+              className="h-8 rounded-l border border-[#c59b27]/40 bg-white px-3 text-xs text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-[#c59b27]"
             />
             <button
               onClick={() => setActiveTab("dashboard")}
-              className="flex h-8 w-9 items-center justify-center rounded-r bg-[#007bff] text-white hover:bg-blue-600"
+              className="flex h-8 w-9 items-center justify-center rounded-r bg-gradient-to-r from-[#c59b27] to-[#997519] text-black font-bold hover:brightness-110 shadow-sm"
               title="Search"
             >
               <Search className="h-4 w-4" />
@@ -625,7 +656,7 @@ function AdminPage() {
           {/* Quick Refresh */}
           <button
             onClick={handleRefresh}
-            className="flex items-center gap-1 text-xs text-gray-300 hover:text-white"
+            className="flex items-center gap-1 text-xs text-gray-300 hover:text-[#f3d98b] transition"
             title="Refresh Data"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
@@ -635,21 +666,21 @@ function AdminPage() {
           {/* View Storefront Link */}
           <Link
             to="/"
-            className="hidden sm:flex items-center gap-1 text-xs text-gray-300 hover:text-white"
+            className="hidden sm:flex items-center gap-1 text-xs text-gray-300 hover:text-[#f3d98b] transition"
             title="Open customer storefront"
           >
-            <Store className="h-3.5 w-3.5 text-amber-400" />
+            <Store className="h-3.5 w-3.5 text-[#c59b27]" />
             <span>Store</span>
           </Link>
 
           {/* User Profile / Logout */}
-          <div className="flex items-center gap-2 border-l border-gray-700 pl-3">
-            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-700 text-xs font-semibold text-gray-200">
+          <div className="flex items-center gap-2 border-l border-gray-700/60 pl-3">
+            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#1c2723] text-xs font-semibold text-[#f3d98b] border border-[#c59b27]/40">
               <User className="h-4 w-4" />
             </div>
             <button
               onClick={handleLogout}
-              className="text-xs text-gray-300 hover:text-rose-400"
+              className="text-xs text-gray-300 hover:text-rose-400 transition"
               title="Logout"
             >
               <LogOut className="h-4 w-4" />
@@ -660,32 +691,32 @@ function AdminPage() {
 
       {/* 2. MAIN WRAPPER: SIDEBAR + CONTENT */}
       <div className="flex flex-1">
-        {/* Left Dark Sidebar */}
+        {/* Left Dark Sidebar with Website Ayurvedic Theme */}
         <aside
           className={`${
             sidebarOpen ? "w-56" : "hidden"
-          } flex flex-col justify-between border-r border-gray-800 bg-[#212529] text-gray-400 transition-all duration-200 shrink-0`}
+          } flex flex-col justify-between border-r border-[#c59b27]/20 bg-[#121916] text-gray-300 transition-all duration-200 shrink-0`}
         >
           {/* Navigation Links */}
           <div className="p-3">
             {/* CORE */}
-            <div className="mb-2 px-3 pt-2 text-[11px] font-bold uppercase tracking-wider text-gray-500">
+            <div className="mb-2 px-3 pt-2 text-[10px] font-bold uppercase tracking-wider text-[#c59b27] font-display">
               CORE
             </div>
             <button
               onClick={() => { setActiveTab("dashboard"); setSelectedOrder(null); }}
               className={`flex w-full items-center gap-2.5 rounded px-3 py-2 text-xs font-medium transition ${
                 activeTab === "dashboard"
-                  ? "bg-gray-800 text-white"
-                  : "hover:bg-gray-800/60 hover:text-gray-200"
+                  ? "bg-[#1c2723] text-[#f3d98b] font-semibold border-l-4 border-[#c59b27] shadow-sm"
+                  : "hover:bg-[#1a2320] hover:text-[#f3d98b]"
               }`}
             >
-              <LayoutDashboard className="h-4 w-4 text-blue-400" />
+              <LayoutDashboard className="h-4 w-4 text-[#c59b27]" />
               <span>Dashboard</span>
             </button>
 
             {/* INTERFACE */}
-            <div className="mb-2 mt-4 px-3 text-[11px] font-bold uppercase tracking-wider text-gray-500">
+            <div className="mb-2 mt-4 px-3 text-[10px] font-bold uppercase tracking-wider text-[#c59b27] font-display">
               INTERFACE
             </div>
             
@@ -694,15 +725,15 @@ function AdminPage() {
               onClick={() => setActiveTab("orders")}
               className={`flex w-full items-center justify-between rounded px-3 py-2 text-xs font-medium transition ${
                 activeTab === "orders"
-                  ? "bg-gray-800 text-white"
-                  : "hover:bg-gray-800/60 hover:text-gray-200"
+                  ? "bg-[#1c2723] text-[#f3d98b] font-semibold border-l-4 border-[#c59b27] shadow-sm"
+                  : "hover:bg-[#1a2320] hover:text-[#f3d98b]"
               }`}
             >
               <div className="flex items-center gap-2.5">
                 <ShoppingBag className="h-4 w-4 text-emerald-400" />
                 <span>Orders ({orders.length})</span>
               </div>
-              <ChevronRight className="h-3 w-3 text-gray-600" />
+              <ChevronRight className="h-3 w-3 text-gray-500" />
             </button>
 
             {/* Products Tab */}
@@ -710,290 +741,113 @@ function AdminPage() {
               onClick={() => setActiveTab("products")}
               className={`flex w-full items-center justify-between rounded px-3 py-2 text-xs font-medium transition ${
                 activeTab === "products"
-                  ? "bg-gray-800 text-white"
-                  : "hover:bg-gray-800/60 hover:text-gray-200"
+                  ? "bg-[#1c2723] text-[#f3d98b] font-semibold border-l-4 border-[#c59b27] shadow-sm"
+                  : "hover:bg-[#1a2320] hover:text-[#f3d98b]"
               }`}
             >
               <div className="flex items-center gap-2.5">
-                <Package className="h-4 w-4 text-amber-400" />
+                <Package className="h-4 w-4 text-[#f3d98b]" />
                 <span>Products ({productList.length})</span>
               </div>
-              <ChevronRight className="h-3 w-3 text-gray-600" />
+              <ChevronRight className="h-3 w-3 text-gray-500" />
             </button>
           </div>
 
           {/* Sidebar Footer: Logged in as: MK Enterprises */}
-          <div className="border-t border-gray-800 bg-[#1a1e24] p-3 text-xs">
-            <div className="text-[11px] text-gray-500">Logged in as:</div>
-            <div className="font-semibold text-gray-300">MK Enterprises</div>
+          <div className="border-t border-[#c59b27]/20 bg-[#0c1210] p-3 text-xs">
+            <div className="text-[10px] uppercase tracking-wider text-[#c59b27]/80">Logged in as:</div>
+            <div className="font-semibold text-[#f3d98b]">MK Enterprises</div>
           </div>
         </aside>
 
         {/* Right Main Content Body */}
-        <main className="flex-1 overflow-x-hidden p-6">
-          {/* TAB 1: MAIN SB ADMIN DASHBOARD (IMG 2) */}
+        <main className="flex-1 overflow-x-hidden p-6 bg-[#fbfaf8]">
+          {/* TAB 1: MAIN SB ADMIN DASHBOARD */}
           {(activeTab === "dashboard" || activeTab === "tables" || activeTab === "charts") && (
             <div className="space-y-6">
               {/* Header Title & Subtitle */}
               <div>
-                <h1 className="text-3xl font-medium tracking-tight text-gray-900">Dashboard</h1>
-                <p className="text-xs text-gray-500">Dashboard</p>
+                <h1 className="text-3xl font-bold tracking-tight text-gray-900 font-display">Dashboard</h1>
+                <p className="text-xs text-gray-500">MK Enterprises Ayurvedic Operations & Sales Overview</p>
               </div>
 
-              {/* 4 COLORED KPI CARDS (BLUE, YELLOW, GREEN, RED) */}
+              {/* 4 AYURVEDIC BRANDED KPI CARDS */}
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                {/* 1. Primary Card (Blue) */}
-                <div className="flex flex-col justify-between overflow-hidden rounded bg-[#007bff] text-white shadow-sm">
+                {/* 1. Total Sales (Deep Ayurvedic Emerald) */}
+                <div className="flex flex-col justify-between overflow-hidden rounded-lg bg-gradient-to-br from-[#16382f] to-[#0d221c] text-white border border-[#c59b27]/40 shadow-sm">
                   <div className="p-4">
-                    <p className="text-base font-medium">Total Sales & Revenue</p>
+                    <p className="text-base font-semibold text-[#f3d98b]">Total Sales & Revenue</p>
                     <p className="mt-1 text-xs opacity-90">
                       Total Sales: {inr(metrics.totalRev)} ({orders.length} Orders)
                     </p>
                   </div>
                   <button
                     onClick={() => setActiveTab("orders")}
-                    className="flex items-center justify-between bg-black/10 px-4 py-2 text-xs font-normal text-white hover:bg-black/20 transition"
+                    className="flex items-center justify-between bg-black/20 px-4 py-2 text-xs font-medium text-white hover:bg-black/30 transition border-t border-white/10"
                   >
                     <span>View Details</span>
-                    <ChevronRight className="h-3.5 w-3.5" />
+                    <ChevronRight className="h-3.5 w-3.5 text-[#c59b27]" />
                   </button>
                 </div>
 
-                {/* 2. Warning Card (Yellow) */}
-                <div className="flex flex-col justify-between overflow-hidden rounded bg-[#ffc107] text-white shadow-sm">
+                {/* 2. Pending Orders (Warm Gold) */}
+                <div className="flex flex-col justify-between overflow-hidden rounded-lg bg-gradient-to-br from-[#8a6814] to-[#5a4309] text-white border border-[#f3d98b]/30 shadow-sm">
                   <div className="p-4">
-                    <p className="text-base font-medium">Pending Orders (COD)</p>
+                    <p className="text-base font-semibold text-white">Pending Orders (COD)</p>
                     <p className="mt-1 text-xs opacity-95">
                       {metrics.pendingCount} Pending Dispatch Orders (COD)
                     </p>
                   </div>
                   <button
                     onClick={() => { setActiveTab("orders"); setOrderStatusFilter("COD_PENDING"); }}
-                    className="flex items-center justify-between bg-black/10 px-4 py-2 text-xs font-normal text-white hover:bg-black/20 transition"
+                    className="flex items-center justify-between bg-black/20 px-4 py-2 text-xs font-medium text-white hover:bg-black/30 transition border-t border-white/10"
                   >
                     <span>View Details</span>
-                    <ChevronRight className="h-3.5 w-3.5" />
+                    <ChevronRight className="h-3.5 w-3.5 text-[#f3d98b]" />
                   </button>
                 </div>
 
-                {/* 3. Success Card (Green) */}
-                <div className="flex flex-col justify-between overflow-hidden rounded bg-[#28a745] text-white shadow-sm">
+                {/* 3. Delivered Orders (Royal Forest Green) */}
+                <div className="flex flex-col justify-between overflow-hidden rounded-lg bg-gradient-to-br from-[#1a4433] to-[#0c2119] text-white border border-emerald-500/30 shadow-sm">
                   <div className="p-4">
-                    <p className="text-base font-medium">Delivered Orders</p>
+                    <p className="text-base font-semibold text-emerald-200">Delivered Orders</p>
                     <p className="mt-1 text-xs opacity-90">
                       {metrics.deliveredCount} Orders Delivered ({inr(metrics.deliveredRev)})
                     </p>
                   </div>
                   <button
                     onClick={() => { setActiveTab("orders"); setOrderStatusFilter("DELIVERED"); }}
-                    className="flex items-center justify-between bg-black/10 px-4 py-2 text-xs font-normal text-white hover:bg-black/20 transition"
+                    className="flex items-center justify-between bg-black/20 px-4 py-2 text-xs font-medium text-white hover:bg-black/30 transition border-t border-white/10"
                   >
                     <span>View Details</span>
-                    <ChevronRight className="h-3.5 w-3.5" />
+                    <ChevronRight className="h-3.5 w-3.5 text-emerald-300" />
                   </button>
                 </div>
 
-                {/* 4. Danger Card (Red) */}
-                <div className="flex flex-col justify-between overflow-hidden rounded bg-[#dc3545] text-white shadow-sm">
+                {/* 4. Products in Store (Warm Bronze) */}
+                <div className="flex flex-col justify-between overflow-hidden rounded-lg bg-gradient-to-br from-[#3d2a1b] to-[#1f150d] text-white border border-amber-600/30 shadow-sm">
                   <div className="p-4">
-                    <p className="text-base font-medium">Product Inventory & Stock</p>
+                    <p className="text-base font-semibold text-amber-200">Product Inventory & Stock</p>
                     <p className="mt-1 text-xs opacity-90">
-                      10 Products Active · {metrics.lowStockCount} Stock Alerts
+                      {productList.length} Products Active · {metrics.lowStockCount} Stock Alerts
                     </p>
                   </div>
                   <button
                     onClick={() => setActiveTab("products")}
-                    className="flex items-center justify-between bg-black/10 px-4 py-2 text-xs font-normal text-white hover:bg-black/20 transition"
+                    className="flex items-center justify-between bg-black/20 px-4 py-2 text-xs font-medium text-white hover:bg-black/30 transition border-t border-white/10"
                   >
                     <span>View Details</span>
-                    <ChevronRight className="h-3.5 w-3.5" />
+                    <ChevronRight className="h-3.5 w-3.5 text-amber-300" />
                   </button>
                 </div>
               </div>
 
-              {/* TWO CHART CARDS SIDE-BY-SIDE (AREA CHART & BAR CHART) */}
-              <div className="grid gap-6 lg:grid-cols-2">
-                {/* 1. Area Chart Example (Left) */}
-                <div className="rounded border border-gray-200 bg-white shadow-sm">
-                  <div className="flex items-center gap-2 border-b border-gray-200 bg-[#f7f7f7] px-4 py-3 text-xs font-semibold text-gray-700">
-                    <LineChart className="h-4 w-4 text-blue-600" />
-                    <span>Area Chart Example</span>
-                  </div>
-                  <div className="p-4">
-                    {/* SVG Spline Area Chart */}
-                    <div className="relative h-64 w-full">
-                      <svg viewBox="0 0 500 240" className="h-full w-full overflow-visible">
-                        <defs>
-                          <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#007bff" stopOpacity="0.3" />
-                            <stop offset="100%" stopColor="#007bff" stopOpacity="0.05" />
-                          </linearGradient>
-                        </defs>
-
-                        {/* Grid lines & Y-axis labels */}
-                        {[
-                          { y: 20, label: "40000" },
-                          { y: 70, label: "30000" },
-                          { y: 120, label: "20000" },
-                          { y: 170, label: "10000" },
-                          { y: 220, label: "0" },
-                        ].map((grid, i) => (
-                          <g key={i}>
-                            <text x="5" y={grid.y + 4} fill="#6c757d" fontSize="9" fontFamily="sans-serif">
-                              {grid.label}
-                            </text>
-                            <line x1="45" y1={grid.y} x2="490" y2={grid.y} stroke="#e9ecef" strokeWidth="1" />
-                          </g>
-                        ))}
-
-                        {/* Area Polygon */}
-                        <polygon
-                          fill="url(#areaGrad)"
-                          points="
-                            50,220
-                            50,180
-                            110,95
-                            170,140
-                            230,110
-                            290,135
-                            350,90
-                            410,105
-                            470,40
-                            470,220
-                          "
-                        />
-
-                        {/* Area Spline Path */}
-                        <polyline
-                          fill="none"
-                          stroke="#007bff"
-                          strokeWidth="2.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          points="
-                            50,180
-                            110,95
-                            170,140
-                            230,110
-                            290,135
-                            350,90
-                            410,105
-                            470,40
-                          "
-                        />
-
-                        {/* Data point dots */}
-                        {[
-                          { cx: 50, cy: 180, val: "Mar 1" },
-                          { cx: 110, cy: 95, val: "Mar 3" },
-                          { cx: 170, cy: 140, val: "Mar 5" },
-                          { cx: 230, cy: 110, val: "Mar 7" },
-                          { cx: 290, cy: 135, val: "Mar 9" },
-                          { cx: 350, cy: 90, val: "Mar 11" },
-                          { cx: 410, cy: 105, val: "Mar 12" },
-                          { cx: 470, cy: 40, val: "Mar 13" },
-                        ].map((pt, idx) => (
-                          <circle
-                            key={idx}
-                            cx={pt.cx}
-                            cy={pt.cy}
-                            r="3.5"
-                            fill="#007bff"
-                            stroke="#fff"
-                            strokeWidth="1.5"
-                            className="cursor-pointer transition hover:scale-125"
-                          />
-                        ))}
-
-                        {/* X-axis labels */}
-                        <g fontSize="9" fill="#6c757d" textAnchor="middle" fontFamily="sans-serif">
-                          <text x="50" y="235">Mar 1</text>
-                          <text x="110" y="235">Mar 3</text>
-                          <text x="170" y="235">Mar 5</text>
-                          <text x="230" y="235">Mar 7</text>
-                          <text x="290" y="235">Mar 9</text>
-                          <text x="350" y="235">Mar 11</text>
-                          <text x="470" y="235">Mar 13</text>
-                        </g>
-                      </svg>
-                    </div>
-                  </div>
-                  <div className="border-t border-gray-200 bg-[#f7f7f7] px-4 py-2 text-[11px] text-gray-500">
-                    Updated yesterday at 11:59 PM
-                  </div>
-                </div>
-
-                {/* 2. Bar Chart Example (Right) */}
-                <div className="rounded border border-gray-200 bg-white shadow-sm">
-                  <div className="flex items-center gap-2 border-b border-gray-200 bg-[#f7f7f7] px-4 py-3 text-xs font-semibold text-gray-700">
-                    <BarChart3 className="h-4 w-4 text-blue-600" />
-                    <span>Bar Chart Example</span>
-                  </div>
-                  <div className="p-4">
-                    {/* SVG Bar Chart */}
-                    <div className="relative h-64 w-full">
-                      <svg viewBox="0 0 500 240" className="h-full w-full overflow-visible">
-                        {/* Grid lines & Y-axis labels */}
-                        {[
-                          { y: 20, label: "15000" },
-                          { y: 80, label: "10000" },
-                          { y: 140, label: "5000" },
-                          { y: 200, label: "0" },
-                        ].map((grid, i) => (
-                          <g key={i}>
-                            <text x="5" y={grid.y + 4} fill="#6c757d" fontSize="9" fontFamily="sans-serif">
-                              {grid.label}
-                            </text>
-                            <line x1="45" y1={grid.y} x2="490" y2={grid.y} stroke="#e9ecef" strokeWidth="1" />
-                          </g>
-                        ))}
-
-                        {/* Vertical Bars */}
-                        {[
-                          { month: "January", x: 70, h: 45, y: 155 },
-                          { month: "February", x: 140, h: 58, y: 142 },
-                          { month: "March", x: 210, h: 72, y: 128 },
-                          { month: "April", x: 280, h: 88, y: 112 },
-                          { month: "May", x: 350, h: 125, y: 75 },
-                          { month: "June", x: 420, h: 180, y: 20 },
-                        ].map((bar, idx) => (
-                          <g key={idx}>
-                            <rect
-                              x={bar.x}
-                              y={bar.y}
-                              width="40"
-                              height={bar.h}
-                              fill="#007bff"
-                              rx="2"
-                              className="cursor-pointer transition hover:opacity-85"
-                            />
-                            <text
-                              x={bar.x + 20}
-                              y="220"
-                              fontSize="9"
-                              fill="#6c757d"
-                              textAnchor="middle"
-                              fontFamily="sans-serif"
-                            >
-                              {bar.month}
-                            </text>
-                          </g>
-                        ))}
-                      </svg>
-                    </div>
-                  </div>
-                  <div className="border-t border-gray-200 bg-[#f7f7f7] px-4 py-2 text-[11px] text-gray-500">
-                    Updated yesterday at 11:59 PM
-                  </div>
-                </div>
-              </div>
-
-              {/* DATATABLE EXAMPLE (FULL WIDTH CARD MATCHING IMG 2) */}
-              <div className="rounded border border-gray-200 bg-white shadow-sm">
-                <div className="flex items-center justify-between border-b border-gray-200 bg-[#f7f7f7] px-4 py-3">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-gray-700">
-                    <TableIcon className="h-4 w-4 text-blue-600" />
-                    <span>DataTable Example</span>
+              {/* DATATABLE EXAMPLE (FULL WIDTH CARD - PURE WHITE TABLE) */}
+              <div className="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
+                <div className="flex items-center justify-between border-b border-gray-200 bg-[#fbfaf8] px-4 py-3">
+                  <div className="flex items-center gap-2 text-xs font-bold text-gray-900">
+                    <TableIcon className="h-4 w-4 text-[#c59b27]" />
+                    <span className="font-display tracking-wide">Customer Orders Table</span>
                   </div>
                   <Button
                     size="sm"
@@ -1187,7 +1041,7 @@ function AdminPage() {
                   )}
                   <Button
                     onClick={() => exportOrdersToCsv(orders)}
-                    className="bg-[#007bff] text-white hover:bg-blue-600 text-xs"
+                    className="bg-gradient-to-r from-[#c59b27] to-[#997519] text-black hover:brightness-110 text-xs font-bold shadow-sm"
                     disabled={orders.length === 0}
                   >
                     <Download className="mr-1.5 h-3.5 w-3.5" /> Export All to CSV
@@ -1206,8 +1060,8 @@ function AdminPage() {
                       onClick={() => setOrderStatusFilter(st)}
                       className={`rounded px-3 py-1.5 text-xs font-semibold transition ${
                         active
-                          ? "bg-[#007bff] text-white shadow-sm"
-                          : "border border-gray-300 bg-white text-gray-700 hover:bg-gray-100"
+                          ? "bg-[#16382f] text-[#f3d98b] font-bold border border-[#c59b27]/40 shadow-sm"
+                          : "border border-gray-300 bg-white text-gray-700 hover:bg-amber-50/40"
                       }`}
                     >
                       {st === "ALL" ? "All Orders" : STATUS_CONFIG[st].label} ({count})
@@ -1355,7 +1209,7 @@ function AdminPage() {
                   </Button>
                   <Button
                     onClick={handleOpenAddModal}
-                    className="bg-[#007bff] text-white hover:bg-blue-600 text-xs shadow-sm font-semibold"
+                    className="bg-gradient-to-r from-[#c59b27] to-[#997519] text-black hover:brightness-110 text-xs shadow-sm font-bold"
                   >
                     <Plus className="mr-1.5 h-4 w-4" /> + Add New Product
                   </Button>

@@ -52,7 +52,7 @@ export type ProductInventoryOverride = {
 
 const SEED_ORDERS: AdminOrder[] = [];
 
-const STORAGE_ORDERS_KEY = "mk_admin_orders_v1";
+const STORAGE_ORDERS_KEY = "mk_admin_orders_v2";
 const STORAGE_INVENTORY_KEY = "mk_admin_inventory_v1";
 const STORAGE_AUTH_KEY = "mk_admin_auth_v1";
 
@@ -70,6 +70,12 @@ export function setStoredAdminAuth(val: boolean) {
 export function getStoredOrders(): AdminOrder[] {
   if (typeof window === "undefined") return [];
   try {
+    // Purge obsolete v1 dummy orders
+    if (localStorage.getItem("mk_admin_orders_v1")) {
+      localStorage.removeItem("mk_admin_orders_v1");
+      localStorage.setItem(STORAGE_ORDERS_KEY, JSON.stringify([]));
+      return [];
+    }
     const raw = localStorage.getItem(STORAGE_ORDERS_KEY);
     if (!raw) {
       localStorage.setItem(STORAGE_ORDERS_KEY, JSON.stringify([]));
@@ -83,11 +89,14 @@ export function getStoredOrders(): AdminOrder[] {
 
 export function clearAllStoredOrders() {
   if (typeof window === "undefined") return;
+  localStorage.removeItem("mk_admin_orders_v1");
+  localStorage.removeItem("mk_admin_orders_v2");
   localStorage.setItem(STORAGE_ORDERS_KEY, JSON.stringify([]));
 }
 
 export function saveStoredOrders(orders: AdminOrder[]) {
   if (typeof window === "undefined") return;
+  localStorage.removeItem("mk_admin_orders_v1");
   localStorage.setItem(STORAGE_ORDERS_KEY, JSON.stringify(orders));
 }
 

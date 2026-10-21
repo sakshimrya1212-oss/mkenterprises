@@ -10,6 +10,7 @@ import { DISCLAIMER, Divider } from "./SectionTitle";
 const nav = [
   { to: "/", label: "Home" },
   { to: "/shop", label: "All Products" },
+  { to: "/track-order", label: "Track Order" },
   { to: "/about", label: "About" },
   { to: "/contact", label: "Contact" },
 ] as const;
