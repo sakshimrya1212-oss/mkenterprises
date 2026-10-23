@@ -92,7 +92,7 @@ export const createOrder = createServerFn({ method: "POST" })
         throw new Error("Could not place order. Please try again.");
       }
     }
-    return { orderNumber, total: t.total, razorpayOrderId, keyId: process.env["RAZORPAY_KEY_ID"] || process.env["VITE_RAZORPAY_KEY_ID"] ?? null };
+    return { orderNumber, total: t.total, razorpayOrderId, keyId: process.env["RAZORPAY_KEY_ID"] || process.env["VITE_RAZORPAY_KEY_ID"] || null };
   });
 
 async function hmacHex(secret: string, msg: string) {
