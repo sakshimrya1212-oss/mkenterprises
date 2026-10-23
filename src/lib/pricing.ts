@@ -2,7 +2,7 @@ import { findVariant } from "./products";
 
 export const FREE_SHIPPING_MIN = 499;
 export const SHIPPING_FEE = 49;
-export const COD_FEE = 40;
+export const COD_FEE = 0;
 export const COD_MAX_TOTAL = 5000;
 export const COUPONS: Record<string, { pct: number; min: number }> = {
   MK15: { pct: 15, min: 499 },

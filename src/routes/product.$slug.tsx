@@ -65,8 +65,12 @@ function ProductPage() {
           <p className="mt-2 text-muted-foreground">{p.short}</p>
           <div className="mt-5 flex items-baseline gap-3">
             <span className="text-3xl font-semibold">{inr(va.price)}</span>
-            <span className="text-muted-foreground line-through">{inr(va.mrp)}</span>
-            <span className="rounded-sm bg-ink px-2 py-0.5 text-xs font-semibold text-gold">{discountPct(va)}% OFF</span>
+            {va.mrp > va.price && (
+              <>
+                <span className="text-muted-foreground line-through">{inr(va.mrp)}</span>
+                <span className="rounded-sm bg-ink px-2 py-0.5 text-xs font-semibold text-gold">{discountPct(va)}% OFF</span>
+              </>
+            )}
           </div>
           <p className="text-xs text-muted-foreground">Inclusive of all taxes</p>
 

@@ -190,7 +190,7 @@ function AdminPage() {
               subtotal: d.subtotal || d.total,
               discount: d.discount || 0,
               shipping: d.shipping || 0,
-              cod_fee: d.cod_fee ?? (d.payment_method === "cod" ? 40 : 0),
+              cod_fee: d.cod_fee ?? 0,
               total: d.total,
               coupon: d.coupon || null,
               payment_method: d.payment_method === "online" ? "online" : "cod",

@@ -76,7 +76,7 @@ export const products: Product[] = [
     category: "oils",
     concern: ["joint"],
     images: [mahaveniOilImg, mahavedi1, mahavedi2, mahavedi3],
-    variants: [v("MK-MAH-80", "80 ml", 399, 299)],
+    variants: [v("MK-MAH-80", "80 ml", 250, 250)],
     short: "Fast-acting Ayurvedic massage oil for neck, wrist, joint and elbow pain relief.",
     benefits: [
       "Instant relief from neck, joint, wrist & elbow discomfort",
@@ -93,7 +93,7 @@ export const products: Product[] = [
     category: "syrups",
     concern: ["urinary", "immunity"],
     images: [argoides200Img, argoides1, argoides2, argoides3],
-    variants: [v("MK-ARG-200", "200 ml", 299, 229)],
+    variants: [v("MK-ARG-200", "200 ml", 350, 350)],
     short: "Ayurvedic formulation with superior oxygen radical absorbance capacity for daily vitality.",
     benefits: [
       "Superior Oxygen Radical Absorbance Capacity (ORAC)",
@@ -110,7 +110,7 @@ export const products: Product[] = [
     category: "syrups",
     concern: ["urinary", "immunity"],
     images: [argoides450Img, argoides1, argoides2, argoides3],
-    variants: [v("MK-ARG-450", "450 ml", 549, 429)],
+    variants: [v("MK-ARG-450", "450 ml", 590, 590)],
     short: "Family pack of Argoides Ayurvedic Syrup for antioxidant defense and sustained vitality.",
     benefits: [
       "Economical 450 ml family pack",
@@ -178,7 +178,7 @@ export const products: Product[] = [
     category: "capsules",
     concern: ["energy", "immunity"],
     images: [kenkoGoldImg, kenyo1, kenyo2, kenyo3],
-    variants: [v("MK-KNG-30", "30 Capsules", 999, 749)],
+    variants: [v("MK-KNG-30", "30 Capsules", 600, 600)],
     short: "Powerful multivitamin HPMC capsules for stamina, brain power, stress relief and anti-aging.",
     benefits: [
       "Boosts daily stamina and physical energy",
@@ -195,7 +195,7 @@ export const products: Product[] = [
     category: "capsules",
     concern: ["digestive"],
     images: [kiyoPetImg],
-    variants: [v("MK-KIY-30", "30 Capsules", 499, 369)],
+    variants: [v("MK-KIY-30", "30 Capsules", 590, 590)],
     short: "Perfect digestive enzyme therapy in HPMC capsules to relieve indigestion and support gut health.",
     benefits: [
       "Digestive enzyme therapy formula for optimal gut health",
@@ -212,7 +212,7 @@ export const products: Product[] = [
     category: "syrups",
     concern: ["joint"],
     images: [mahodadhiImg, mahodadhi1, mahodadhi2, mahodadhi3],
-    variants: [v("MK-MHD-450", "450 ml", 499, 399)],
+    variants: [v("MK-MHD-450", "450 ml", 790, 790)],
     short: "Traditional Ayurvedic syrup formulated with Sunts & herbs for joint and muscular pain relief.",
     benefits: [
       "Soothes joint inflammation, stiffness and muscular pain",
@@ -229,7 +229,7 @@ export const products: Product[] = [
     category: "syrups",
     concern: ["hair-skin", "energy", "immunity"],
     images: [tenDaysSyrupImg, tenDays1, tenDays2, tenDays3],
-    variants: [v("MK-10D-200", "200 ml", 349, 269)],
+    variants: [v("MK-10D-200", "200 ml", 330, 330)],
     short: "Complete daily wellness tonic with 30+ powerful ingredients for nutrition, immunity & glowing skin.",
     benefits: [
       "30+ powerful botanical & nutraceutical ingredients",
@@ -242,7 +242,7 @@ export const products: Product[] = [
   },
 ].map(p);
 
-export const PRODUCTS_STORAGE_KEY = "mk_custom_products_v2";
+export const PRODUCTS_STORAGE_KEY = "mk_custom_products_v3";
 
 export const featuredProductPosters = [
   { img: mahavedi1, title: "Mahaveni Pain Relief Oil", productSlug: "mahaveni-pain-oil", tag: "Fast Joint Relief" },

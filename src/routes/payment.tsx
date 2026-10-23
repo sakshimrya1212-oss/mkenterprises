@@ -754,9 +754,6 @@ function PaymentPage() {
                         <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[11px] font-bold tracking-wide text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
                           <CheckCircle2 className="h-3 w-3" /> ACTIVE & SECURE
                         </span>
-                        <span className="inline-flex items-center gap-1 rounded-full bg-gold-dark/15 px-2 py-0.5 text-[10px] font-bold text-gold-dark">
-                          SAVE ₹40 COD FEE
-                        </span>
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground">
                         Pay securely with UPI (Google Pay, PhonePe, Paytm, BHIM), Cards (Visa, Mastercard, RuPay) & Net Banking.
@@ -829,19 +826,22 @@ function PaymentPage() {
                       className="mt-1 h-4 w-4 text-gold-dark accent-gold-dark"
                     />
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span className="font-bold text-base text-foreground">
                           Cash on Delivery (COD)
                         </span>
                         <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[11px] font-bold tracking-wide text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
                           <CheckCircle2 className="h-3 w-3" /> AVAILABLE NOW
                         </span>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                          ₹0 HANDLING FEE
+                        </span>
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground">
                         Pay in cash or UPI QR directly to the delivery partner when your order arrives.
                       </p>
-                      <p className="mt-2 text-xs font-semibold text-foreground">
-                        Standard COD handling fee: ₹40
+                      <p className="mt-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                        ✓ No extra handling charges on COD (100% Free)
                       </p>
                     </div>
                   </div>
