@@ -4,6 +4,7 @@
  */
 
 export const ADMIN_WHATSAPP_NUMBER = "919111722209"; // MK Enterprises Admin (+91 91117 22209)
+export const SITE_URL = "https://mkenterprises.org";
 
 export interface WhatsAppOrderDetails {
   orderNumber: string;
@@ -95,7 +96,7 @@ export function buildAdminNewOrderMessage(order: WhatsAppOrderDetails): string {
     (order.codFee > 0 ? `• COD Handling: ₹${order.codFee}\n` : "") +
     `*TOTAL PAYABLE: ₹${order.total}*\n\n` +
     `📍 *Delivery Address:*\n${addressText}\n\n` +
-    `🔗 *Admin Dashboard:* https://mkenterprises.com/admin`
+    `🔗 *Admin Dashboard:* ${SITE_URL}/admin`
   );
 }
 
@@ -146,7 +147,7 @@ export function buildCustomerInvoiceMessage(order: WhatsAppOrderDetails): string
     `📍 *Shipping To:*\n${order.customerName}\n${addressText}\n\n` +
     `🔍 *Track Order Live:*\n` +
     `Visit our website and enter your Order ID *${order.orderNumber}* and phone *${order.phone}*:\n` +
-    `https://mkenterprises.com/track-order\n\n` +
+    `${SITE_URL}/track-order\n\n` +
     `📞 *Customer Care / WhatsApp Support:*\n` +
     `+91 91117 22209 | Ambikapur, Surguja, CG`
   );
@@ -172,7 +173,7 @@ export function buildCustomerStatusUpdateMessage(
         `• Total Amount: *₹${order.total}* (${order.paymentMethod.toUpperCase()})\n` +
         `• Status: Preparing for Dispatch\n\n` +
         `We are carefully packaging your Ayurvedic medicines and wellness products with care.\n\n` +
-        `🔍 Track order status anytime: https://mkenterprises.com/track-order\n` +
+        `🔍 Track order status anytime: ${SITE_URL}/track-order\n` +
         `Helpline: +91 91117 22209`
       );
 
@@ -188,7 +189,7 @@ export function buildCustomerStatusUpdateMessage(
           ? `⚠️ *Tip:* Please keep the exact cash of ₹${order.total} ready for our delivery courier.\n\n`
           : "") +
         `Expected Delivery: 3-5 business days.\n` +
-        `Track: https://mkenterprises.com/track-order\n` +
+        `Track: ${SITE_URL}/track-order\n` +
         `Support: +91 91117 22209`
       );
 
@@ -201,7 +202,7 @@ export function buildCustomerStatusUpdateMessage(
         `⭐ *Customer Feedback:*\n` +
         `If you need any dosage guidance or have questions, please reply directly to this chat.\n\n` +
         `Thank you for trusting *MK Enterprises*!\n` +
-        `Website: https://mkenterprises.com`
+        `Website: ${SITE_URL}`
       );
 
     case "CANCELLED":
@@ -218,7 +219,7 @@ export function buildCustomerStatusUpdateMessage(
         `Namaste *${name}*,\n` +
         `Your order *#${orderId}* status has been updated to: *${newStatus.replace(/_/g, " ")}*.\n\n` +
         `Total: ₹${order.total}\n` +
-        `Track your order: https://mkenterprises.com/track-order\n` +
+        `Track your order: ${SITE_URL}/track-order\n` +
         `Support: +91 91117 22209`
       );
   }
