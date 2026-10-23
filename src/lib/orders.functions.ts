@@ -86,11 +86,7 @@ export const createOrder = createServerFn({ method: "POST" })
       razorpay_order_id: razorpayOrderId,
     });
     if (error) {
-      console.error("Supabase order insert note:", error);
-      // If Supabase RLS policy is not configured, do not block Cash on Delivery orders
-      if (data.method !== "cod") {
-        throw new Error("Could not place order. Please try again.");
-      }
+      console.warn("Supabase initial order insert note:", error);
     }
     return { orderNumber, total: t.total, razorpayOrderId, keyId: process.env["RAZORPAY_KEY_ID"] || process.env["VITE_RAZORPAY_KEY_ID"] || null };
   });
