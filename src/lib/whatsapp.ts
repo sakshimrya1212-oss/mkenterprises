@@ -80,7 +80,7 @@ export function buildAdminNewOrderMessage(order: WhatsAppOrderDetails): string {
     order.paymentMethod.toLowerCase() === "cod" ? "Cash on Delivery (COD)" : "Online Paid (Prepaid)";
 
   return (
-    `🚨 *NEW ORDER RECEIVED — MK Enterprises* 🚨\n\n` +
+    `🌿 *I want to buy this — MK Enterprises Order* 🌿\n\n` +
     `*Order ID:* #${order.orderNumber}\n` +
     `*Date:* ${dateStr}\n` +
     `*Payment Mode:* ${paymentText}\n\n` +
@@ -96,7 +96,7 @@ export function buildAdminNewOrderMessage(order: WhatsAppOrderDetails): string {
     (order.codFee > 0 ? `• COD Handling: ₹${order.codFee}\n` : "") +
     `*TOTAL PAYABLE: ₹${order.total}*\n\n` +
     `📍 *Delivery Address:*\n${addressText}\n\n` +
-    `🔗 *Admin Dashboard:* ${SITE_URL}/admin`
+    `🔍 *Track Order:* ${SITE_URL}/track-order`
   );
 }
 

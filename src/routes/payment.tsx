@@ -562,7 +562,7 @@ function PaymentPage() {
                       Customer Invoice
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Get full itemized order invoice directly on your WhatsApp ({placedOrder.phone}).
+                      Get full itemized order invoice directly on your WhatsApp.
                     </p>
                   </div>
                   <Button
@@ -574,15 +574,15 @@ function PaymentPage() {
                   </Button>
                 </div>
 
-                {/* Button 2: Alert Admin on WhatsApp */}
+                {/* Button 2: Send Order Confirmation on WhatsApp */}
                 <div className="flex flex-col justify-between rounded-lg border border-blue-500/30 bg-white dark:bg-zinc-900 p-4 shadow-sm">
                   <div>
                     <div className="flex items-center gap-2 text-xs font-bold text-blue-700 dark:text-blue-400">
                       <Send className="h-4 w-4" />
-                      Admin Dispatch Alert
+                      Order Confirmation
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Sends complete order notification to MK Enterprises Admin (+91 91117 22209).
+                      Send your order details directly to MK Enterprises on WhatsApp for quick confirmation.
                     </p>
                   </div>
                   <Button
@@ -591,7 +591,7 @@ function PaymentPage() {
                     className="mt-3 w-full border-blue-600 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950 font-semibold text-xs"
                   >
                     <Send className="mr-1.5 h-4 w-4" />
-                    Notify Admin (+91 91117 22209)
+                    Confirm Order on WhatsApp
                   </Button>
                 </div>
               </div>
@@ -602,7 +602,7 @@ function PaymentPage() {
               <div className="flex justify-between items-center font-semibold text-foreground">
                 <span>Shipping Address:</span>
                 <span className="text-muted-foreground">
-                  {placedOrder.customerName} ({placedOrder.phone})
+                  {placedOrder.customerName}
                 </span>
               </div>
               <p className="text-muted-foreground">
