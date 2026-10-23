@@ -24,7 +24,7 @@ import { PageHero } from "@/components/site/Layout";
 import { supabase } from "@/integrations/supabase/client";
 import { useCart } from "@/lib/cart";
 import { computeTotals } from "@/lib/pricing";
-import { createOrder } from "@/lib/orders.functions";
+import { createOrder, verifyPayment, markPaymentFailed } from "@/lib/orders.functions";
 import { inr } from "@/lib/products";
 import { getStoredOrders, saveStoredOrders, type AdminOrder } from "@/lib/admin";
 import {
@@ -32,6 +32,19 @@ import {
   sendCustomerInvoiceWhatsApp,
   type WhatsAppOrderDetails,
 } from "@/lib/whatsapp";
+
+function loadRazorpayScript(): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (typeof window === "undefined") return resolve(false);
+    if ((window as any).Razorpay) return resolve(true);
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.async = true;
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+}
 
 export const Route = createFileRoute("/payment")({
   head: () => ({
@@ -60,8 +73,10 @@ function PaymentPage() {
   const { lines, coupon, clear } = useCart();
   const nav = useNavigate();
   const place = useServerFn(createOrder);
+  const verify = useServerFn(verifyPayment);
+  const failPayment = useServerFn(markPaymentFailed);
 
-  const [paymentMethod, setPaymentMethod] = useState<"razorpay" | "cod">("cod");
+  const [paymentMethod, setPaymentMethod] = useState<"razorpay" | "cod">("razorpay");
   const [busy, setBusy] = useState(false);
   const [address, setAddress] = useState<SavedAddress | null>(null);
   const [placedOrder, setPlacedOrder] = useState<WhatsAppOrderDetails | null>(null);
@@ -263,13 +278,228 @@ function PaymentPage() {
     }
   };
 
-  // Handler for Razorpay payment (Coming soon notice + instructions)
-  const handleRazorpayClick = () => {
-    toast.info("Razorpay Online Payment Coming Soon!", {
-      description:
-        "We are currently integrating Razorpay Gateway. Please select Cash on Delivery to place your order now.",
-      duration: 6000,
-    });
+  // Handler for Razorpay online payment
+  const handlePlaceRazorpayOrder = async () => {
+    if (!address || !address.name || !address.phone || !address.line1) {
+      toast.error("Please provide your delivery address first.", {
+        description: "Redirecting to address details...",
+      });
+      nav({ to: "/checkout" });
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const isScriptLoaded = await loadRazorpayScript();
+      if (!isScriptLoaded) {
+        throw new Error("Unable to load Razorpay payment SDK. Please check your internet connection.");
+      }
+
+      const cleanPhone = (address.phone || "").replace(/\D/g, "").slice(-10) || "9111722209";
+      const cleanPincode = (address.pincode || "497001").replace(/\D/g, "").slice(0, 6) || "497001";
+      const orderCity = (address.city || "").trim() || "Ambikapur";
+      const orderState = (address.state || "").trim() || "Chhattisgarh";
+
+      const { data: s } = await supabase.auth.getSession();
+      const res = await place({
+        data: {
+          lines,
+          coupon,
+          method: "online",
+          address: {
+            name: address.name.trim(),
+            phone: cleanPhone,
+            email: address.email || "",
+            line1: address.line1.trim(),
+            line2: address.line2 || "",
+            landmark: address.landmark || "",
+            pincode: cleanPincode,
+            city: orderCity,
+            state: orderState,
+          },
+          accessToken: s.session?.access_token ?? null,
+        },
+      });
+
+      if (!res || !res.razorpayOrderId) {
+        throw new Error("Could not initialize Razorpay order. Please choose Cash on Delivery.");
+      }
+
+      const rzpKey = res.keyId || import.meta.env["VITE_RAZORPAY_KEY_ID"];
+      if (!rzpKey) {
+        throw new Error("Razorpay payment gateway key is not available. Please try Cash on Delivery.");
+      }
+
+      const options = {
+        key: rzpKey,
+        amount: Math.round(t.total * 100),
+        currency: "INR",
+        name: "MK Enterprises",
+        description: `Order #${res.orderNumber}`,
+        image: "/favicon.png",
+        order_id: res.razorpayOrderId,
+        prefill: {
+          name: address.name.trim(),
+          contact: cleanPhone,
+          email: address.email || "",
+        },
+        theme: {
+          color: "#C59B27",
+        },
+        modal: {
+          ondismiss: async () => {
+            setBusy(false);
+            try {
+              await failPayment({ data: { orderNumber: res.orderNumber } });
+            } catch (err) {}
+            toast.info("Payment window closed.", {
+              description: "You can retry paying or select Cash on Delivery.",
+            });
+          },
+        },
+        handler: async (resp: {
+          razorpay_payment_id: string;
+          razorpay_order_id: string;
+          razorpay_signature: string;
+        }) => {
+          try {
+            setBusy(true);
+            const verifyRes = await verify({
+              data: {
+                orderNumber: res.orderNumber,
+                razorpay_order_id: resp.razorpay_order_id,
+                razorpay_payment_id: resp.razorpay_payment_id,
+                razorpay_signature: resp.razorpay_signature,
+              },
+            });
+
+            if (!verifyRes.ok) {
+              throw new Error("Payment signature verification failed. Please contact support.");
+            }
+
+            const orderDetails: WhatsAppOrderDetails = {
+              orderNumber: res.orderNumber,
+              customerName: address.name,
+              phone: cleanPhone,
+              email: address.email || null,
+              items: t.items.map((it) => ({
+                name: it.name,
+                qty: it.qty,
+                price: it.price,
+                variant: it.variant,
+              })),
+              subtotal: t.subtotal,
+              discount: t.discount,
+              shipping: t.shipping,
+              codFee: 0,
+              total: t.total,
+              paymentMethod: "online",
+              status: "PAID",
+              address: {
+                line1: address.line1,
+                line2: address.line2 || "",
+                landmark: address.landmark || "",
+                pincode: address.pincode,
+                city: address.city || "Ambikapur",
+                state: address.state || "Chhattisgarh",
+              },
+              createdAt: new Date().toISOString(),
+            };
+
+            // Direct update to Supabase orders table
+            try {
+              await supabase
+                .from("orders")
+                .update({
+                  status: "PAID",
+                  razorpay_payment_id: resp.razorpay_payment_id,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq("order_number", res.orderNumber);
+            } catch (supaErr) {
+              console.warn("Direct Supabase update note:", supaErr);
+            }
+
+            // Sync into admin local storage
+            try {
+              const adminOrder: AdminOrder = {
+                id: "ord-" + Date.now(),
+                order_number: res.orderNumber,
+                customer_name: orderDetails.customerName,
+                phone: orderDetails.phone,
+                email: orderDetails.email ?? null,
+                address: {
+                  name: orderDetails.customerName,
+                  phone: orderDetails.phone,
+                  ...(orderDetails.email ? { email: orderDetails.email } : {}),
+                  line1: orderDetails.address.line1,
+                  line2: orderDetails.address.line2 || "",
+                  landmark: orderDetails.address.landmark || "",
+                  pincode: orderDetails.address.pincode,
+                  city: orderCity,
+                  state: orderState,
+                },
+                items: orderDetails.items.map((it) => ({
+                  sku: "MK-" + it.name.slice(0, 3).toUpperCase(),
+                  qty: it.qty,
+                  name: it.name,
+                  variant: it.variant || "Standard",
+                  price: it.price,
+                })),
+                subtotal: orderDetails.subtotal,
+                discount: orderDetails.discount,
+                shipping: orderDetails.shipping,
+                cod_fee: 0,
+                total: orderDetails.total,
+                coupon: coupon || null,
+                payment_method: "online",
+                status: "PAID",
+                created_at: orderDetails.createdAt || new Date().toISOString(),
+              };
+              const currentOrders = getStoredOrders();
+              saveStoredOrders([adminOrder, ...currentOrders]);
+            } catch (err) {
+              console.error("Local storage order sync note:", err);
+            }
+
+            // WhatsApp alert to Admin
+            try {
+              sendAdminNewOrderWhatsApp(orderDetails);
+            } catch (err) {
+              console.error("WhatsApp admin trigger error:", err);
+            }
+
+            setPlacedOrder(orderDetails);
+            clear();
+            localStorage.removeItem("mk_checkout_address");
+
+            toast.success(`Payment Verified! Order ${res.orderNumber} placed successfully!`, {
+              description: "WhatsApp alert sent to Admin. You can now get your invoice on WhatsApp.",
+              duration: 10000,
+            });
+          } catch (verifyErr) {
+            toast.error(verifyErr instanceof Error ? verifyErr.message : "Payment verification error.");
+          } finally {
+            setBusy(false);
+          }
+        },
+      };
+
+      const rzpInstance = new (window as any).Razorpay(options);
+      rzpInstance.on("payment.failed", async (failResp: any) => {
+        setBusy(false);
+        try {
+          await failPayment({ data: { orderNumber: res.orderNumber } });
+        } catch (e) {}
+        toast.error("Payment failed", {
+          description: failResp.error?.description || "Transaction was declined or cancelled.",
+        });
+      });
+      rzpInstance.open();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not initialize payment. Please try again.");
+      setBusy(false);
+    }
   };
 
   // Order Placed Success View with instant WhatsApp buttons
@@ -498,12 +728,12 @@ function PaymentPage() {
                 <CreditCard className="h-5 w-5 text-gold-dark" /> Choose Payment Method
               </h3>
 
-              {/* CARD 1: RAZORPAY (COMING SOON) */}
+              {/* CARD 1: RAZORPAY (ONLINE PAYMENT - ACTIVE) */}
               <div
                 onClick={() => setPaymentMethod("razorpay")}
                 className={`relative cursor-pointer rounded-xl border-2 p-5 transition-all shadow-sm ${
                   paymentMethod === "razorpay"
-                    ? "border-gold-dark bg-gold-dark/5"
+                    ? "border-gold-dark bg-gold-dark/5 ring-1 ring-gold-dark/30"
                     : "border-border bg-card hover:border-gold-dark/40"
                 }`}
               >
@@ -514,55 +744,67 @@ function PaymentPage() {
                       name="payment_method"
                       checked={paymentMethod === "razorpay"}
                       onChange={() => setPaymentMethod("razorpay")}
-                      className="mt-1 h-4 w-4 text-gold-dark accent-gold-dark"
+                      className="mt-1 h-4 w-4 text-gold-dark accent-gold-dark cursor-pointer"
                     />
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-bold text-base text-foreground">
                           Razorpay Online Payment
                         </span>
-                        {/* COMING SOON BADGE */}
-                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[11px] font-bold tracking-wide text-amber-700 dark:text-amber-300 border border-amber-500/30">
-                          <Clock className="h-3 w-3" /> COMING SOON
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[11px] font-bold tracking-wide text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
+                          <CheckCircle2 className="h-3 w-3" /> ACTIVE & SECURE
+                        </span>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-gold-dark/15 px-2 py-0.5 text-[10px] font-bold text-gold-dark">
+                          SAVE ₹40 COD FEE
                         </span>
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        Pay securely with UPI (Google Pay, PhonePe, Paytm), Debit/Credit Cards & Net Banking.
+                        Pay securely with UPI (Google Pay, PhonePe, Paytm, BHIM), Cards (Visa, Mastercard, RuPay) & Net Banking.
                       </p>
 
                       {/* Payment Badges Logos */}
                       <div className="mt-3 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
-                        <span className="rounded bg-muted px-2 py-1 font-semibold">UPI / QR</span>
-                        <span className="rounded bg-muted px-2 py-1 font-semibold">PhonePe</span>
-                        <span className="rounded bg-muted px-2 py-1 font-semibold">Google Pay</span>
-                        <span className="rounded bg-muted px-2 py-1 font-semibold">Paytm</span>
-                        <span className="rounded bg-muted px-2 py-1 font-semibold">Visa / Mastercard / RuPay</span>
+                        <span className="rounded bg-muted px-2 py-1 font-semibold text-foreground">UPI / QR</span>
+                        <span className="rounded bg-muted px-2 py-1 font-semibold text-foreground">PhonePe</span>
+                        <span className="rounded bg-muted px-2 py-1 font-semibold text-foreground">Google Pay</span>
+                        <span className="rounded bg-muted px-2 py-1 font-semibold text-foreground">Paytm</span>
+                        <span className="rounded bg-muted px-2 py-1 font-semibold text-foreground">Visa / Mastercard / RuPay</span>
+                        <span className="rounded bg-muted px-2 py-1 font-semibold text-foreground">Net Banking</span>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Coming soon info banner inside Razorpay card */}
-                <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3.5 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+                {/* Instant activation banner */}
+                <div className="mt-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3.5 text-xs text-emerald-900 dark:text-emerald-200">
                   <div className="flex items-start gap-2.5">
-                    <Sparkles className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+                    <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400 mt-0.5" />
                     <div>
-                      <p className="font-semibold">Razorpay Gateway Integration in Progress</p>
-                      <p className="mt-0.5 text-[11px] leading-relaxed text-amber-800 dark:text-amber-300">
-                        Online payment gateway will be enabled as soon as Razorpay API credentials are configured in your admin settings. For now, you can place your order using Cash on Delivery.
+                      <p className="font-semibold text-emerald-800 dark:text-emerald-200">Instant Order Confirmation & 0% Extra Charges</p>
+                      <p className="mt-0.5 text-[11px] leading-relaxed text-emerald-700 dark:text-emerald-300">
+                        256-bit encrypted & verified by Razorpay. Orders placed online get priority express dispatch!
                       </p>
                     </div>
                   </div>
                 </div>
 
                 {paymentMethod === "razorpay" && (
-                  <div className="mt-4">
+                  <div className="mt-4 pt-3 border-t">
                     <Button
                       type="button"
-                      onClick={handleRazorpayClick}
-                      className="w-full bg-gold-gradient font-bold uppercase tracking-wider text-black opacity-80 hover:opacity-100"
+                      disabled={busy}
+                      onClick={handlePlaceRazorpayOrder}
+                      className="w-full bg-gold-gradient font-bold uppercase tracking-wider text-black hover:opacity-90 shadow-md py-6 text-sm sm:text-base cursor-pointer"
+                      size="lg"
                     >
-                      <Lock className="mr-2 h-4 w-4" /> Pay with Razorpay (Coming Soon)
+                      {busy ? (
+                        "Opening Razorpay Payment..."
+                      ) : (
+                        <span className="flex items-center justify-center gap-2">
+                          <Lock className="h-5 w-5" />
+                          Pay {inr(t.total)} via Razorpay
+                        </span>
+                      )}
                     </Button>
                   </div>
                 )}

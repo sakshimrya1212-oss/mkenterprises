@@ -51,13 +51,13 @@ export const createOrder = createServerFn({ method: "POST" })
     let razorpayOrderId: string | null = null;
 
     if (data.method === "online") {
-      const keyId = process.env["RAZORPAY_KEY_ID"];
+      const keyId = process.env["RAZORPAY_KEY_ID"] || process.env["VITE_RAZORPAY_KEY_ID"];
       const secret = process.env["RAZORPAY_KEY_SECRET"];
       if (!keyId || !secret) throw new Error("Online payment is not set up yet. Please choose Cash on Delivery.");
       const res = await fetch("https://api.razorpay.com/v1/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: "Basic " + btoa(`${keyId}:${secret}`) },
-        body: JSON.stringify({ amount: t.total * 100, currency: "INR", receipt: orderNumber }),
+        body: JSON.stringify({ amount: Math.round(t.total * 100), currency: "INR", receipt: orderNumber }),
       });
       if (!res.ok) {
         console.error("Razorpay order failed", res.status, await res.text());
@@ -92,7 +92,7 @@ export const createOrder = createServerFn({ method: "POST" })
         throw new Error("Could not place order. Please try again.");
       }
     }
-    return { orderNumber, total: t.total, razorpayOrderId, keyId: process.env["RAZORPAY_KEY_ID"] ?? null };
+    return { orderNumber, total: t.total, razorpayOrderId, keyId: process.env["RAZORPAY_KEY_ID"] || process.env["VITE_RAZORPAY_KEY_ID"] ?? null };
   });
 
 async function hmacHex(secret: string, msg: string) {

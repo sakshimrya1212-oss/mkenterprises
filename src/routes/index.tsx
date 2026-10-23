@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { ProductCard } from "@/components/site/ProductCard";
 import { Divider, SectionTitle } from "@/components/site/SectionTitle";
 import { categories, concerns, products } from "@/lib/products";
+import { ProductPostersSlider } from "@/components/site/ProductPostersSlider";
+import { VideoTestimonials } from "@/components/site/VideoTestimonials";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -78,6 +80,9 @@ function Index() {
         <div className="mt-8 text-center"><Button variant="secondary" asChild><Link to="/shop">View All</Link></Button></div>
       </section>
 
+      {/* Featured Clinical Product Posters Slider */}
+      <ProductPostersSlider />
+
       <section className="bg-ink py-16 text-ink-foreground">
         <div className="mx-auto max-w-7xl px-4">
           <div className="mb-10 text-center">
@@ -115,8 +120,12 @@ function Index() {
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">{fresh.slice(0, 8).map((p) => <ProductCard key={p.id} product={p} />)}</div>
       </section>
 
+      {/* Customer Video Testimonials Reel Slider */}
+      <VideoTestimonials />
+
+      {/* Written Verified Customer Reviews */}
       <section className="mx-auto max-w-7xl px-4 py-16">
-        <SectionTitle title="What Customers Say" sub="Real reviews from our verified buyers across India." />
+        <SectionTitle title="Verified Buyer Reviews" sub="What our valued customers across India have to say." />
         <div className="grid gap-6 md:grid-cols-3">
           {[
             { n: "Deepak Agarwal", c: "Delhi", t: "Packaging was premium and delivery was quick. Happy with my order." },

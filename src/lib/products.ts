@@ -9,6 +9,26 @@ import mahaveniOilImg from "../assets/products/mahaveni-oil.jpg";
 import mahodadhiImg from "../assets/products/mahodadhi.jpg";
 import tenDaysSyrupImg from "../assets/products/ten-days-syrup.jpg";
 
+// Product Posters
+import tenDays1 from "../assets/products/products_posters/10days1.jpeg";
+import tenDays2 from "../assets/products/products_posters/10days2.jpeg";
+import tenDays3 from "../assets/products/products_posters/10days3.jpeg";
+import argoides1 from "../assets/products/products_posters/argoides1.jpeg";
+import argoides2 from "../assets/products/products_posters/argoides2.jpeg";
+import argoides3 from "../assets/products/products_posters/argoides3.jpeg";
+import argoidesSachet1 from "../assets/products/products_posters/argoidesSachet.jpeg";
+import argoidesSachet2 from "../assets/products/products_posters/argoidesSachet2.jpeg";
+import argoidesSachet3 from "../assets/products/products_posters/argoidesSachet3.jpeg";
+import kenyo1 from "../assets/products/products_posters/kenyo1.jpeg";
+import kenyo2 from "../assets/products/products_posters/kenyo2.jpeg";
+import kenyo3 from "../assets/products/products_posters/kenyo3.jpeg";
+import mahavedi1 from "../assets/products/products_posters/mahavedi1.jpeg";
+import mahavedi2 from "../assets/products/products_posters/mahavedi2.jpeg";
+import mahavedi3 from "../assets/products/products_posters/mahavedi3.jpeg";
+import mahodadhi1 from "../assets/products/products_posters/mahodadhi.jpeg";
+import mahodadhi2 from "../assets/products/products_posters/mahodadhi2.jpeg";
+import mahodadhi3 from "../assets/products/products_posters/mahodadhi3.jpeg";
+
 export type Variant = { label: string; mrp: number; price: number; sku: string; stock: number };
 export type Product = {
   id: string;
@@ -55,7 +75,7 @@ export const products: Product[] = [
     name: "Mahaveni Instant Pain Relief Oil",
     category: "oils",
     concern: ["joint"],
-    images: [mahaveniOilImg],
+    images: [mahaveniOilImg, mahavedi1, mahavedi2, mahavedi3],
     variants: [v("MK-MAH-80", "80 ml", 399, 299)],
     short: "Fast-acting Ayurvedic massage oil for neck, wrist, joint and elbow pain relief.",
     benefits: [
@@ -72,7 +92,7 @@ export const products: Product[] = [
     name: "Argoides Ayurvedic Syrup (200 ml)",
     category: "syrups",
     concern: ["urinary", "immunity"],
-    images: [argoides200Img],
+    images: [argoides200Img, argoides1, argoides2, argoides3],
     variants: [v("MK-ARG-200", "200 ml", 299, 229)],
     short: "Ayurvedic formulation with superior oxygen radical absorbance capacity for daily vitality.",
     benefits: [
@@ -89,7 +109,7 @@ export const products: Product[] = [
     name: "Argoides Ayurvedic Syrup (450 ml)",
     category: "syrups",
     concern: ["urinary", "immunity"],
-    images: [argoides450Img],
+    images: [argoides450Img, argoides1, argoides2, argoides3],
     variants: [v("MK-ARG-450", "450 ml", 549, 429)],
     short: "Family pack of Argoides Ayurvedic Syrup for antioxidant defense and sustained vitality.",
     benefits: [
@@ -106,7 +126,7 @@ export const products: Product[] = [
     name: "Argoides Ayurvedic Sachets (10 x 10g)",
     category: "sachets",
     concern: ["immunity", "energy"],
-    images: [argoidesSachetsImg],
+    images: [argoidesSachetsImg, argoidesSachet1, argoidesSachet2, argoidesSachet3],
     variants: [v("MK-ARG-SAC", "10 x 10g Sachets", 499, 399)],
     short: "Convenient Ayurvedic instant wellness drink sachets loaded with natural antioxidants.",
     benefits: [
@@ -157,7 +177,7 @@ export const products: Product[] = [
     name: "Kenko Gold Multivitamin HPMC Capsules",
     category: "capsules",
     concern: ["energy", "immunity"],
-    images: [kenkoGoldImg],
+    images: [kenkoGoldImg, kenyo1, kenyo2, kenyo3],
     variants: [v("MK-KNG-30", "30 Capsules", 999, 749)],
     short: "Powerful multivitamin HPMC capsules for stamina, brain power, stress relief and anti-aging.",
     benefits: [
@@ -191,7 +211,7 @@ export const products: Product[] = [
     name: "Mahodadhi Joint & Muscular Relief Syrup",
     category: "syrups",
     concern: ["joint"],
-    images: [mahodadhiImg],
+    images: [mahodadhiImg, mahodadhi1, mahodadhi2, mahodadhi3],
     variants: [v("MK-MHD-450", "450 ml", 499, 399)],
     short: "Traditional Ayurvedic syrup formulated with Sunts & herbs for joint and muscular pain relief.",
     benefits: [
@@ -208,7 +228,7 @@ export const products: Product[] = [
     name: "10days Complete Wellness Syrup (200 ml)",
     category: "syrups",
     concern: ["hair-skin", "energy", "immunity"],
-    images: [tenDaysSyrupImg],
+    images: [tenDaysSyrupImg, tenDays1, tenDays2, tenDays3],
     variants: [v("MK-10D-200", "200 ml", 349, 269)],
     short: "Complete daily wellness tonic with 30+ powerful ingredients for nutrition, immunity & glowing skin.",
     benefits: [
@@ -222,7 +242,16 @@ export const products: Product[] = [
   },
 ].map(p);
 
-export const PRODUCTS_STORAGE_KEY = "mk_custom_products_v1";
+export const PRODUCTS_STORAGE_KEY = "mk_custom_products_v2";
+
+export const featuredProductPosters = [
+  { img: mahavedi1, title: "Mahaveni Pain Relief Oil", productSlug: "mahaveni-pain-oil", tag: "Fast Joint Relief" },
+  { img: argoides1, title: "Argoides Ayurvedic Syrup", productSlug: "argoides-syrup-200ml", tag: "High ORAC Vitality" },
+  { img: tenDays1, title: "10days Complete Wellness", productSlug: "ten-days-syrup", tag: "30+ Potent Herbs" },
+  { img: kenyo1, title: "Kenko Gold Multivitamin", productSlug: "kenko-gold", tag: "Cognitive & Stamina" },
+  { img: mahodadhi1, title: "Mahodadhi Muscular Syrup", productSlug: "mahodadhi-syrup", tag: "Traditional Sunts" },
+  { img: argoidesSachet1, title: "Argoides Herbal Sachets", productSlug: "argoides-sachets", tag: "Instant Drink" },
+];
 
 export function getAllProducts(): Product[] {
   if (typeof window === "undefined") return products;

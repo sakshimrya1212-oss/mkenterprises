@@ -92,6 +92,7 @@ type TabType = "dashboard" | "orders" | "products" | "charts" | "tables";
 
 const STATUS_CONFIG: Record<AdminOrderStatus, { label: string; badgeClass: string; bg: string }> = {
   COD_PENDING: { label: "COD Pending", badgeClass: "bg-amber-100 text-amber-800 border border-amber-300", bg: "#ffc107" },
+  PAID: { label: "Paid (Online)", badgeClass: "bg-emerald-100 text-emerald-800 border border-emerald-300 font-semibold", bg: "#10b981" },
   CONFIRMED: { label: "Confirmed", badgeClass: "bg-blue-100 text-blue-800 border border-blue-300", bg: "#007bff" },
   SHIPPED: { label: "Shipped", badgeClass: "bg-purple-100 text-purple-800 border border-purple-300", bg: "#6f42c1" },
   DELIVERED: { label: "Delivered", badgeClass: "bg-emerald-100 text-emerald-800 border border-emerald-300", bg: "#28a745" },

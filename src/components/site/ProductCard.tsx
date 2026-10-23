@@ -14,8 +14,28 @@ export function ProductCard({ product }: { product: Product }) {
       <button aria-label="Add to wishlist" onClick={() => toggleWish(product.slug)} className="absolute right-2 top-2 z-10 rounded-full bg-card/90 p-1.5">
         <Heart className={`h-4 w-4 ${wished ? "fill-gold text-gold" : "text-ink"}`} />
       </button>
-      <Link to="/product/$slug" params={{ slug: product.slug }} className="flex aspect-square items-center justify-center overflow-hidden bg-card p-3">
-        <img src={product.images[0]} alt={product.name} loading="lazy" className="h-full w-full object-contain transition duration-500 group-hover:scale-105" />
+      <Link to="/product/$slug" params={{ slug: product.slug }} className="relative flex aspect-square items-center justify-center overflow-hidden bg-card p-3">
+        <img 
+          src={product.images[0]} 
+          alt={product.name} 
+          loading="lazy" 
+          className={`h-full w-full object-contain transition-all duration-500 ${
+            product.images.length > 1 ? "group-hover:opacity-0 group-hover:scale-95" : "group-hover:scale-105"
+          }`} 
+        />
+        {product.images.length > 1 && (
+          <img
+            src={product.images[1]}
+            alt={`${product.name} poster preview`}
+            loading="lazy"
+            className="absolute inset-0 h-full w-full object-contain p-3 opacity-0 transition-all duration-500 group-hover:opacity-100 group-hover:scale-105"
+          />
+        )}
+        {product.images.length > 1 && (
+          <span className="absolute bottom-2 right-2 rounded bg-black/60 px-1.5 py-0.5 text-[9px] font-medium text-white/80 opacity-0 transition group-hover:opacity-100">
+            +{product.images.length - 1} Posters
+          </span>
+        )}
       </Link>
       <div className="flex flex-1 flex-col gap-2 p-4">
         <Link to="/product/$slug" params={{ slug: product.slug }} className="font-display text-sm font-semibold leading-snug hover:text-gold-dark">

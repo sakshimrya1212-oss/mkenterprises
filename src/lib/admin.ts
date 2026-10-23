@@ -1,6 +1,6 @@
 import { products, type Product } from "./products";
 
-export type AdminOrderStatus = "COD_PENDING" | "CONFIRMED" | "SHIPPED" | "DELIVERED" | "CANCELLED";
+export type AdminOrderStatus = "COD_PENDING" | "PAID" | "CONFIRMED" | "SHIPPED" | "DELIVERED" | "CANCELLED";
 
 export type AdminOrderItem = {
   sku: string;

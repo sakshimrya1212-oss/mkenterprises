@@ -1,14 +1,16 @@
 import { createFileRoute, Link, notFound, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { Heart, Minus, Plus, Truck } from "lucide-react";
+import { Heart, Minus, Plus, Truck, Sparkles, Star } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ProductCard } from "@/components/site/ProductCard";
+import { ProductImageGallery } from "@/components/site/ProductImageGallery";
 import { DISCLAIMER, SectionTitle } from "@/components/site/SectionTitle";
 import { useCart } from "@/lib/cart";
 import { categories, discountPct, getProduct, inr, products } from "@/lib/products";
+import { videoReviews } from "@/components/site/VideoTestimonials";
 
 export const Route = createFileRoute("/product/$slug")({
   loader: ({ params }) => {
@@ -31,7 +33,6 @@ export const Route = createFileRoute("/product/$slug")({
 function ProductPage() {
   const { slug } = Route.useLoaderData();
   const p = getProduct(slug)!;
-  const [img, setImg] = useState(0);
   const [vi, setVi] = useState(0);
   const [qty, setQty] = useState(1);
   const [pin, setPin] = useState("");
@@ -41,6 +42,8 @@ function ProductPage() {
   const va = p.variants[vi] ?? p.variants[0];
   const related = products.filter((x) => x.category === p.category && x.slug !== p.slug).slice(0, 4);
   const soldOut = va.stock <= 0;
+  const productReviews = videoReviews.filter((r) => r.productSlug === p.slug);
+
   const checkPin = () => {
     if (!/^\d{6}$/.test(pin)) return setPinMsg("Enter a valid 6-digit pincode");
     const d = new Date(Date.now() + 5 * 864e5).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
@@ -54,18 +57,8 @@ function ProductPage() {
       </nav>
       <div className="grid gap-10 md:grid-cols-2">
         <div>
-          <div className="group flex aspect-square items-center justify-center overflow-hidden rounded-md border border-gold-dark/40 bg-card p-4">
-            <img src={p.images[img]} alt={p.name} className="h-full w-full object-contain transition duration-500 group-hover:scale-105" />
-          </div>
-          {p.images.length > 1 && (
-            <div className="mt-3 flex gap-3">
-              {p.images.map((s, i) => (
-                <button key={i} onClick={() => setImg(i)} className={`h-20 w-20 overflow-hidden rounded border-2 p-1 ${i === img ? "border-gold" : "border-transparent"}`}>
-                  <img src={s} alt={`${p.name} view ${i + 1}`} className="h-full w-full object-contain" />
-                </button>
-              ))}
-            </div>
-          )}
+          {/* Enhanced Ecommerce Product Gallery & Slider */}
+          <ProductImageGallery images={p.images} productName={p.name} />
         </div>
         <div>
           <h1 className="text-3xl font-semibold">{p.name}</h1>
@@ -116,18 +109,63 @@ function ProductPage() {
           </div>
 
           <Tabs defaultValue="desc" className="mt-8">
-            <TabsList>
+            <TabsList className="w-full flex justify-start overflow-x-auto">
               <TabsTrigger value="desc">Description</TabsTrigger>
               <TabsTrigger value="use">How to Use</TabsTrigger>
-              <TabsTrigger value="reviews">Reviews</TabsTrigger>
+              {p.images.length > 1 && (
+                <TabsTrigger value="posters" className="flex items-center gap-1.5">
+                  <Sparkles className="h-3.5 w-3.5 text-gold" />
+                  Posters ({p.images.length - 1})
+                </TabsTrigger>
+              )}
+              <TabsTrigger value="reviews">Reviews {productReviews.length > 0 ? `(${productReviews.length})` : ""}</TabsTrigger>
             </TabsList>
             <TabsContent value="desc" className="text-sm text-muted-foreground">
               <p>{p.short}</p>
               <ul className="mt-3 list-inside list-disc space-y-1">{p.benefits.map((b) => <li key={b}>{b}</li>)}</ul>
-              <p className="mt-3">Ingredients: please refer to the product label.</p>
+              <p className="mt-3">Ingredients: please refer to the product label & formulation posters.</p>
             </TabsContent>
             <TabsContent value="use" className="text-sm text-muted-foreground">{p.howToUse}</TabsContent>
-            <TabsContent value="reviews" className="text-sm text-muted-foreground">No reviews yet.</TabsContent>
+            {p.images.length > 1 && (
+              <TabsContent value="posters" className="pt-2">
+                <p className="text-xs text-muted-foreground mb-3">Clinical and informative posters for {p.name}:</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {p.images.slice(1).map((posterSrc, idx) => (
+                    <div key={idx} className="group relative rounded-lg border border-gold-dark/30 bg-card p-2 overflow-hidden shadow-sm hover:border-gold">
+                      <img src={posterSrc} alt={`${p.name} poster ${idx + 1}`} className="w-full h-auto object-contain transition group-hover:scale-102" />
+                      <p className="mt-2 text-[11px] font-medium text-center text-foreground">Clinical Guide {idx + 1}</p>
+                    </div>
+                  ))}
+                </div>
+              </TabsContent>
+            )}
+            <TabsContent value="reviews" className="text-sm text-muted-foreground">
+              {productReviews.length > 0 ? (
+                <div className="space-y-3 pt-2">
+                  {productReviews.map((pr) => (
+                    <div key={pr.id} className="rounded-lg border border-gold/30 bg-card p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-semibold text-foreground text-sm">{pr.name}</p>
+                          <p className="text-xs text-muted-foreground">{pr.location} · Verified Buyer</p>
+                        </div>
+                        <div className="flex gap-0.5 text-gold">
+                          {Array.from({ length: 5 }).map((_, i) => (
+                            <Star key={i} className="h-3.5 w-3.5 fill-gold" />
+                          ))}
+                        </div>
+                      </div>
+                      <p className="mt-2 text-xs italic text-foreground/80">"{pr.quote}"</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-lg border p-4 text-center">
+                  <p>Verified reviews are currently being compiled for this batch.</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Check out customer video reviews on our homepage!</p>
+                </div>
+              )}
+            </TabsContent>
           </Tabs>
           <p className="mt-6 rounded-md bg-muted p-3 text-[11px] text-muted-foreground">{DISCLAIMER}</p>
         </div>
